@@ -122,7 +122,7 @@ export async function getProducts(storeId: string) {
   }
 
   // Map 'path' to 'url' for frontend compatibility
-  const productsWithUrls = products?.map(product => ({
+  const productsWithUrls = products?.map((product: any) => ({
     ...product,
     images: product.images?.map((img: any) => ({
       ...img,

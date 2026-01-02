@@ -327,7 +327,7 @@ export default function ProductsPage() {
                   onChange={(e) => setOutOfStockBehavior(e.target.value as "label" | "auto_hide")}
                   className="flex h-10 w-full rounded-md border border-input bg-background px-3 py-2 text-sm"
                 >
-                  <option value="label">Mostrar "Agotado"</option>
+                  <option value="label">Mostrar &quot;Agotado&quot;</option>
                   <option value="auto_hide">Ocultar automáticamente</option>
                 </select>
               </div>
