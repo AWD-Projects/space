@@ -78,13 +78,21 @@ export async function signIn(formData: FormData) {
     redirect("/login?error=" + encodeURIComponent(error.message));
   }
 
-  // Check if user has completed onboarding
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    redirect("/login?error=" + encodeURIComponent("No se pudo autenticar"));
+  }
+
   const { data: store } = await supabase
     .from("stores")
     .select("id, status")
-    .single();
+    .eq("owner_id", user!.id)
+    .maybeSingle<{ id: string; status: "draft" | "published" }>();
 
-  if (!store) {
+  if (!store || store.status !== "published") {
     redirect("/onboarding");
   }
 

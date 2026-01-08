@@ -9,13 +9,14 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, Package2, Image as ImageIcon, AlertCircle, ChevronLeft, ChevronRight, Upload, Download, X } from "lucide-react";
+import { Plus, Edit, Trash2, Package2, Image as ImageIcon, AlertCircle, ChevronLeft, ChevronRight, Upload, Download, X, Loader2 } from "lucide-react";
 import { getMyStore } from "@/lib/actions/store";
 import { getProducts, createProduct, updateProduct, deleteProduct, importProducts } from "@/lib/actions/product";
 import { getCatalogs } from "@/lib/actions/catalog";
 import { generateSlug } from "@/lib/utils/slug";
 import { formatStock, parseStock, formatNumberMX, formatPriceDisplay } from "@/lib/utils/formatters";
 import Image from "next/image";
+import { useToast } from "@/components/ui/toast-provider";
 
 interface ProductImage {
   id?: string;
@@ -200,6 +201,12 @@ export default function ProductsPage() {
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
   const [importMessage, setImportMessage] = useState<string | null>(null);
   const [showImportDialog, setShowImportDialog] = useState(false);
+  const { addToast } = useToast();
+
+  function notifyImportError(message: string) {
+    setImportMessage(message);
+    addToast({ title: "Error de importación", description: message, variant: "error" });
+  }
 
   useEffect(() => {
     loadData();
@@ -282,7 +289,7 @@ export default function ProductsPage() {
       : await createProduct(store.id, data);
 
     if (result?.error) {
-      alert(`Error: ${result.error}`);
+      addToast({ title: "No pudimos guardar el producto", description: result.error, variant: "error" });
       setSaving(false);
       return;
     }
@@ -330,12 +337,12 @@ export default function ProductsPage() {
       const parsed = parseCsv(text);
 
       if (parsed.error) {
-        setImportMessage(parsed.error);
+        notifyImportError(parsed.error);
         return;
       }
 
       if (parsed.rows.length === 0) {
-        setImportMessage("No se encontraron filas con datos en el archivo.");
+        notifyImportError("No se encontraron filas con datos en el archivo.");
         return;
       }
 
@@ -355,17 +362,17 @@ export default function ProductsPage() {
       const result: any = await importProducts(store.id, payload);
 
       if (result?.error) {
-        setImportMessage(result.error);
+        notifyImportError(result.error);
       } else if (result?.data) {
         setImportResult(result.data);
         if (result.data.imported > 0) {
           loadData();
         }
       } else {
-        setImportMessage("No se pudo procesar el archivo.");
+        notifyImportError("No se pudo procesar el archivo.");
       }
     } catch (error: any) {
-      setImportMessage(error?.message || "No se pudo leer el archivo.");
+      notifyImportError(error?.message || "No se pudo leer el archivo.");
     } finally {
       setImporting(false);
       event.target.value = "";
@@ -407,7 +414,7 @@ export default function ProductsPage() {
               Cancelar
             </Button>
             <Button size="sm" className="sm:size-default" onClick={handleSubmit} disabled={!name || !slug || saving}>
-              {saving ? "Guardando..." : editingProduct ? "Actualizar" : "Crear"}
+              {saving ? (<><Loader2 className="mr-2 h-4 w-4 animate-spin" /> Guardando...</>) : editingProduct ? "Actualizar" : "Crear"}
             </Button>
           </div>
         </div>

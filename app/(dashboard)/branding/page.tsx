@@ -9,8 +9,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { FormSkeleton } from "@/components/ui/skeleton";
 import { getMyStore, updateStore } from "@/lib/actions/store";
-import { Palette, Save, Sparkles, Store, MessageSquare, CreditCard, Mail } from "lucide-react";
+import { Palette, Save, Sparkles, Store, MessageSquare, CreditCard, Mail, Loader2 } from "lucide-react";
 import { formatPhoneNumber, parsePhoneNumber } from "@/lib/utils/formatters";
+import { useToast } from "@/components/ui/toast-provider";
 
 export default function BrandingPage() {
   const [store, setStore] = useState<any>(null);
@@ -26,6 +27,7 @@ export default function BrandingPage() {
   const [whatsappPhone, setWhatsappPhone] = useState("");
   const [paymentUrl, setPaymentUrl] = useState("");
   const [contactEmail, setContactEmail] = useState("");
+  const { addToast } = useToast();
 
   useEffect(() => {
     loadData();
@@ -66,12 +68,13 @@ export default function BrandingPage() {
 
     if (result.error) {
       console.error("Error saving:", result.error);
-      alert(`Error al guardar: ${result.error}`);
+      addToast({ title: "No pudimos guardar", description: result.error, variant: "error" });
       setSaveSuccess(false);
     } else {
       console.log("Saved successfully:", result.data);
       setSaveSuccess(true);
       setTimeout(() => setSaveSuccess(false), 3000);
+      addToast({ title: "Preferencias actualizadas", variant: "success" });
       // Reload data to reflect changes
       loadData();
     }
@@ -106,8 +109,17 @@ export default function BrandingPage() {
             </Badge>
           )}
           <Button onClick={handleSave} disabled={saving} size="sm" className="sm:size-default md:size-lg">
-            <Save className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
-            <span className="hidden sm:inline">{saving ? "Guardando..." : "Guardar cambios"}</span>
+            {saving ? (
+              <>
+                <Loader2 className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5 animate-spin" />
+                <span className="hidden sm:inline">Guardando...</span>
+              </>
+            ) : (
+              <>
+                <Save className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
+                <span className="hidden sm:inline">Guardar cambios</span>
+              </>
+            )}
           </Button>
         </div>
       </div>

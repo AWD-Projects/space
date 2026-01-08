@@ -477,7 +477,7 @@ space/
 │   │   ├── branding/
 │   │   └── preview/
 │   ├── onboarding/       # Wizard de onboarding
-│   ├── [store_slug]/     # Catálogo público SSR
+│   ├── (public)/[store_slug]/     # Catálogo público SSR
 │   │   ├── catalog/[catalog_slug]/
 │   │   └── product/[product_slug]/
 │   └── layout.tsx

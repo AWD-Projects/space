@@ -43,6 +43,12 @@ const config: Config = {
           DEFAULT: "hsl(var(--card))",
           foreground: "hsl(var(--card-foreground))",
         },
+        spaceBlue: "#4F6BFF",
+        spaceLavender: "#B8C0FF",
+        spaceMist: "#E9ECFF",
+        ink: "#1E1F24",
+        slate: "#6E7280",
+        cloud: "#F4F5F8",
       },
       borderRadius: {
         lg: "var(--radius)",

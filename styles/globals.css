@@ -47,6 +47,28 @@
     --input: 240 3.7% 15.9%;
     --ring: 240 4.9% 83.9%;
   }
+
+  .admin-theme {
+    --background: 220 15% 96%;
+    --foreground: 228 12% 13%;
+    --card: 0 0% 100%;
+    --card-foreground: 228 12% 13%;
+    --popover: 0 0% 100%;
+    --popover-foreground: 228 12% 13%;
+    --primary: 231 100% 65%;
+    --primary-foreground: 0 0% 100%;
+    --secondary: 228 100% 96%;
+    --secondary-foreground: 228 12% 13%;
+    --muted: 228 40% 92%;
+    --muted-foreground: 227 12% 46%;
+    --accent: 228 100% 96%;
+    --accent-foreground: 228 12% 13%;
+    --destructive: 0 72% 50%;
+    --destructive-foreground: 0 0% 98%;
+    --border: 226 40% 90%;
+    --input: 226 40% 90%;
+    --ring: 231 100% 65%;
+  }
 }
 
 @layer base {
@@ -54,6 +76,6 @@
     @apply border-border;
   }
   body {
-    @apply bg-background text-foreground;
+    @apply bg-background text-foreground font-sans;
   }
 }

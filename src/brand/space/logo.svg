@@ -1,0 +1,8 @@
+<svg width="260" height="80" viewBox="0 0 260 80" role="img" aria-labelledby="spaceLogoTitle" xmlns="http://www.w3.org/2000/svg">
+  <title id="spaceLogoTitle">SPACE admin brand logo</title>
+  <g fill="none" fill-rule="evenodd">
+    <rect x="4" y="12" width="56" height="56" rx="12" fill="#4F6BFF"/>
+    <rect x="16" y="24" width="32" height="32" rx="8" fill="#E9ECFF"/>
+    <path fill="#1E1F24" d="M88 34h22v6h-15v5h13v6h-13v9h-7zm33-1.3c7.6 0 12.2 3.6 12.2 9.1 0 5.7-4.6 9.3-12.8 9.3h-3.7v8h-7.2V32.7h11.5zm-3.7 5.7v7.2h3.4c3.4 0 5.4-1.2 5.4-3.6 0-2.3-1.9-3.6-5.4-3.6zm36.6-7.1c8.8 0 15.1 5.5 15.1 13.1 0 7.6-6.3 13.2-15.2 13.2-8.8 0-15.1-5.5-15.1-13.1 0-7.6 6.3-13.2 15.2-13.2zm0 5.9c-4.7 0-7.9 3.1-7.9 7.4s3.2 7.4 7.9 7.4c4.7 0 7.9-3.1 7.9-7.4s-3.2-7.4-7.9-7.4zm28.9-5.9l15.5 0v6.1h-8.3v4.8h7.1v6h-7.1v8.4h-7.2zm33.9 0l9.6 24 9.5-24h7.6l-13.2 32.2h-7.8l-13.3-32.2z"/>
+  </g>
+</svg>

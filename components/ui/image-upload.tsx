@@ -5,6 +5,7 @@ import { createClient } from "@/lib/supabase/client";
 import { Button } from "./button";
 import { X, Upload, Loader2 } from "lucide-react";
 import Image from "next/image";
+import { useToast } from "@/components/ui/toast-provider";
 
 interface ImageUploadProps {
   images: Array<{ id?: string; url: string; sort_order: number }>;
@@ -20,6 +21,7 @@ export function ImageUpload({
   bucket = "public-images"
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
+  const { addToast } = useToast();
 
   async function handleFileChange(e: React.ChangeEvent<HTMLInputElement>) {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -28,7 +30,7 @@ export function ImageUpload({
     const remainingSlots = maxImages - images.length;
 
     if (files.length > remainingSlots) {
-      alert(`Solo puedes subir ${remainingSlots} imagen(es) más`);
+      addToast({ title: "Límite de imágenes", description: `Solo puedes subir ${remainingSlots} imagen(es) más`, variant: "error" });
       return;
     }
 
@@ -40,13 +42,13 @@ export function ImageUpload({
       for (const file of files) {
         // Validate file type
         if (!file.type.startsWith("image/")) {
-          alert(`${file.name} no es una imagen válida`);
+          addToast({ title: "Archivo inválido", description: `${file.name} no es una imagen`, variant: "error" });
           continue;
         }
 
         // Validate file size (max 5MB)
         if (file.size > 5 * 1024 * 1024) {
-          alert(`${file.name} es muy pesada (máx 5MB)`);
+          addToast({ title: "Archivo muy pesado", description: `${file.name} supera los 5MB`, variant: "error" });
           continue;
         }
 
@@ -65,7 +67,7 @@ export function ImageUpload({
 
         if (uploadError) {
           console.error("Upload error:", uploadError);
-          alert(`Error al subir ${file.name}`);
+          addToast({ title: "Error al subir", description: `No se pudo subir ${file.name}`, variant: "error" });
           continue;
         }
 
@@ -83,7 +85,7 @@ export function ImageUpload({
       onImagesChange([...images, ...newImages]);
     } catch (error) {
       console.error("Error uploading images:", error);
-      alert("Error al subir las imágenes");
+      addToast({ title: "Error al subir imágenes", description: "Intenta nuevamente", variant: "error" });
     } finally {
       setUploading(false);
     }
