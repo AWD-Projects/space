@@ -1,9 +1,15 @@
+import type { Metadata } from "next";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { getMyStore } from "@/lib/actions/store";
 import { getStoreAnalytics } from "@/lib/actions/analytics";
 import { Eye, MousePointerClick, Package, AlertCircle, TrendingUp, Store, ShoppingCart, BarChart3 } from "lucide-react";
 import { formatNumberMX } from "@/lib/utils/formatters";
+
+export const metadata: Metadata = {
+  title: "Dashboard · SPACE",
+  description: "Resumen de rendimiento y métricas de tu tienda.",
+};
 
 export default async function HomePage() {
   const { data: storeRaw } = await getMyStore();

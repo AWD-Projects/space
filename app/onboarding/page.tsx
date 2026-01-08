@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { useRouter } from "next/navigation";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,8 +14,22 @@ import { generateSlug } from "@/lib/utils/slug";
 import { formatPhoneNumber, parsePhoneNumber, formatStock, parseStock } from "@/lib/utils/formatters";
 import { Check, Copy, Palette, Sparkles, LayoutDashboard, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
+import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Step = 1 | 2 | 3 | 4 | 5;
+
+type StoreRecord = {
+  id: string;
+  name: string;
+  slug: string;
+  description: string | null;
+  primary_color: string;
+  accent_color: string;
+  default_cta: "whatsapp" | "payment_link" | "contact";
+  whatsapp_phone: string | null;
+  default_payment_url: string | null;
+  contact_email: string | null;
+};
 
 const stepHighlights = [
   { title: "Crea tu tienda", desc: "Nombre, slug y colores base", icon: Sparkles },
@@ -29,6 +43,7 @@ export default function OnboardingPage() {
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const { addToast } = useToast();
+  const [isFinishing, startFinishing] = useTransition();
 
   const [storeName, setStoreName] = useState("");
   const [storeSlug, setStoreSlug] = useState("");
@@ -56,19 +71,53 @@ export default function OnboardingPage() {
 
   const progress = (currentStep / 5) * 100;
 
+  useEffect(() => {
+    const supabase = createSupabaseBrowserClient();
+    async function preloadStore() {
+      const { data } = await supabase
+        .from("stores")
+        .select("id, name, slug, description, primary_color, accent_color, default_cta, whatsapp_phone, default_payment_url, contact_email")
+        .maybeSingle<StoreRecord>();
+
+      if (data) {
+        setStoreId(data.id);
+        setStoreName(data.name || "");
+        setStoreSlug(data.slug || "");
+        setStoreDescription(data.description || "");
+        setPrimaryColor(data.primary_color || "#111111");
+        setAccentColor(data.accent_color || "#6B7280");
+        setDefaultCta((data.default_cta as "whatsapp" | "payment_link" | "contact") || "whatsapp");
+        setWhatsappPhone(data.whatsapp_phone || "");
+        setPaymentUrl(data.default_payment_url || "");
+        setContactEmail(data.contact_email || "");
+      }
+    }
+
+    preloadStore();
+  }, []);
+
   const handleStep1 = async () => {
     setLoading(true);
-    const result: any = await createStore({
+    const baseData = {
       name: storeName,
       slug: storeSlug,
       description: storeDescription || null,
       primary_color: primaryColor,
       accent_color: accentColor,
-      status: "draft",
-    });
+    };
+    const result: any = storeId
+      ? await updateStore(storeId, baseData)
+      : await createStore({
+          ...baseData,
+          status: "draft",
+        });
 
     if (result.error || !result.data) {
-      addToast({ title: "No pudimos crear tu tienda", description: result.error || "Intenta de nuevo", variant: "error" });
+      addToast({
+        title: storeId ? "No pudimos actualizar tu tienda" : "No pudimos crear tu tienda",
+        description: result.error || "Intenta de nuevo",
+        variant: "error",
+      });
       setLoading(false);
       return;
     }
@@ -155,7 +204,9 @@ export default function OnboardingPage() {
   };
 
   const handleFinish = () => {
-    router.push("/home");
+    startFinishing(() => {
+      router.push("/home");
+    });
   };
 
   const copyUrl = () => {
@@ -493,8 +544,15 @@ export default function OnboardingPage() {
                           </Button>
                         </div>
                       </div>
-                      <Button onClick={handleFinish} className="w-full">
-                        Ir al dashboard
+                      <Button onClick={handleFinish} className="w-full" disabled={isFinishing}>
+                        {isFinishing ? (
+                          <>
+                            <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                            Llevándote al dashboard...
+                          </>
+                        ) : (
+                          "Ir al dashboard"
+                        )}
                       </Button>
                     </div>
                   )}

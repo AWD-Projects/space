@@ -12,9 +12,9 @@ import { useState, useEffect } from "react";
 import { Skeleton } from "@/components/ui/skeleton";
 import { formatNumberMX, formatPriceDisplay } from "@/lib/utils/formatters";
 
-interface PageProps {
+export type PageProps = {
   params: Promise<{ store_slug: string; product_slug: string }>;
-}
+};
 
 export default function ProductPage({ params }: PageProps) {
   const [product, setProduct] = useState<any>(null);

@@ -4,9 +4,47 @@ import Link from "next/link";
 import { ArrowLeft, Package } from "lucide-react";
 import ProductCard from "@/components/public/product-card";
 import { formatNumberMX } from "@/lib/utils/formatters";
+import type { Metadata } from "next";
 
-interface PageProps {
+export type PageProps = {
   params: Promise<{ store_slug: string; catalog_slug: string }>;
+};
+
+export async function generateMetadata(
+  { params }: PageProps
+): Promise<Metadata> {
+  const { store_slug, catalog_slug } = await params;
+  const [{ data: store }, { data: catalog }] = await Promise.all([
+    getPublicStore(store_slug),
+    getPublicCatalog(store_slug, catalog_slug),
+  ]);
+
+  if (!store || !catalog) {
+    return {
+      title: "Catálogo no disponible · SPACE",
+      description: "Este catálogo ya no está disponible.",
+    };
+  }
+
+  const storeData = store as any;
+  const catalogData = catalog as any;
+  const description =
+    catalogData.description ||
+    `Explora ${catalogData.name} de ${storeData.name} en SPACE.`;
+
+  return {
+    title: `${catalogData.name} · ${storeData.name}`,
+    description,
+    openGraph: {
+      title: `${catalogData.name} · ${storeData.name}`,
+      description,
+      url: `/${storeData.slug}/catalog/${catalogData.slug}`,
+    },
+    twitter: {
+      title: `${catalogData.name} · ${storeData.name}`,
+      description,
+    },
+  };
 }
 
 export default async function CatalogPage({ params }: PageProps) {
