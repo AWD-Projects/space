@@ -29,6 +29,7 @@ export default function OnboardingPage() {
   const [storeSlug, setStoreSlug] = useState("");
   const [storeDescription, setStoreDescription] = useState("");
   const [primaryColor, setPrimaryColor] = useState("#111111");
+  const [accentColor, setAccentColor] = useState("#6B7280");
   const [storeId, setStoreId] = useState<string>("");
 
   // Step 2: CTA
@@ -61,6 +62,7 @@ export default function OnboardingPage() {
       slug: storeSlug,
       description: storeDescription || null,
       primary_color: primaryColor,
+      accent_color: accentColor,
       status: "draft",
     });
 
@@ -224,6 +226,15 @@ export default function OnboardingPage() {
                     type="color"
                     value={primaryColor}
                     onChange={(e) => setPrimaryColor(e.target.value)}
+                  />
+                </div>
+                <div className="space-y-2">
+                  <Label htmlFor="accent-color">Color secundario</Label>
+                  <Input
+                    id="accent-color"
+                    type="color"
+                    value={accentColor}
+                    onChange={(e) => setAccentColor(e.target.value)}
                   />
                 </div>
                 <Button

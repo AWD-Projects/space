@@ -85,8 +85,8 @@ export default function PreviewPage() {
             )}
           </Button>
           <Button size="sm" className="sm:size-default" asChild>
-            <Link href={publicUrl} target="_blank">
-              <ExternalLink className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
+            <Link href={publicUrl} target="_blank" className="flex items-center gap-2">
+              <ExternalLink className="h-4 w-4 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Abrir en nueva pestaña</span>
             </Link>
           </Button>

@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useRef, useState, ChangeEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -9,9 +9,9 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { ImageUpload } from "@/components/ui/image-upload";
 import { ProductCardSkeleton } from "@/components/ui/skeleton";
-import { Plus, Edit, Trash2, Package2, Image as ImageIcon, ShoppingBag, AlertCircle, ChevronLeft, ChevronRight } from "lucide-react";
+import { Plus, Edit, Trash2, Package2, Image as ImageIcon, AlertCircle, ChevronLeft, ChevronRight, Upload, Download, X } from "lucide-react";
 import { getMyStore } from "@/lib/actions/store";
-import { getProducts, createProduct, updateProduct, deleteProduct } from "@/lib/actions/product";
+import { getProducts, createProduct, updateProduct, deleteProduct, importProducts } from "@/lib/actions/product";
 import { getCatalogs } from "@/lib/actions/catalog";
 import { generateSlug } from "@/lib/utils/slug";
 import { formatStock, parseStock, formatNumberMX, formatPriceDisplay } from "@/lib/utils/formatters";
@@ -43,6 +43,130 @@ interface Product {
 interface Catalog {
   id: string;
   name: string;
+  slug: string;
+}
+
+interface ImportResult {
+  imported: number;
+  failed: number;
+  errors: { rowNumber: number; message: string }[];
+}
+
+interface CsvRecord {
+  rowNumber: number;
+  values: Record<string, string>;
+}
+
+interface ParsedCsvResult {
+  rows: CsvRecord[];
+  error?: string;
+}
+
+const CSV_HEADERS = [
+  "name",
+  "url",
+  "description",
+  "price_text",
+  "stock",
+  "catalog_slug",
+] as const;
+
+const CSV_SAMPLE_ROW: Record<(typeof CSV_HEADERS)[number], string> = {
+  name: "Camisa Premium Azul",
+  url: "https://space.store/marca/product/camisa-premium-azul",
+  description: "Camisa slim fit en tela italiana",
+  price_text: "$799 MXN",
+  stock: "25",
+  catalog_slug: "camisas",
+};
+
+function escapeCsvValue(value: string) {
+  if (value.includes(",") || value.includes("\"") || value.includes("\n")) {
+    return `"${value.replace(/"/g, '""')}"`;
+  }
+  return value;
+}
+
+function buildTemplateCsv() {
+  const headerLine = CSV_HEADERS.join(",");
+  const sampleLine = CSV_HEADERS
+    .map((header) => escapeCsvValue(CSV_SAMPLE_ROW[header] || ""))
+    .join(",");
+
+  return `${headerLine}\n${sampleLine}\n`;
+}
+
+function parseCsv(content: string): ParsedCsvResult {
+  const text = content.replace(/^\uFEFF/, "");
+  const rows: string[][] = [];
+  let current = "";
+  let row: string[] = [];
+  let inQuotes = false;
+
+  const commitCell = () => {
+    row.push(current);
+    current = "";
+  };
+
+  const commitRow = () => {
+    commitCell();
+    const hasValue = row.some((cell) => cell.trim() !== "");
+    if (hasValue) {
+      rows.push(row);
+    }
+    row = [];
+  };
+
+  for (let i = 0; i < text.length; i++) {
+    const char = text[i];
+
+    if (char === "\"") {
+      if (inQuotes && text[i + 1] === "\"") {
+        current += "\"";
+        i++;
+      } else {
+        inQuotes = !inQuotes;
+      }
+    } else if (char === "," && !inQuotes) {
+      commitCell();
+    } else if ((char === "\n" || char === "\r") && !inQuotes) {
+      if (char === "\r" && text[i + 1] === "\n") {
+        i++;
+      }
+      commitRow();
+    } else {
+      current += char;
+    }
+  }
+
+  if (current !== "" || row.length > 0) {
+    commitRow();
+  }
+
+  if (rows.length === 0) {
+    return { rows: [], error: "El archivo CSV está vacío" };
+  }
+
+  const headerCells = rows[0].map((cell) => cell.trim().toLowerCase());
+  if (!headerCells.includes("name")) {
+    return { rows: [], error: "La cabecera debe incluir la columna 'name'" };
+  }
+
+  const dataRows = rows
+    .slice(1)
+    .map((cells, idx) => {
+      const values: Record<string, string> = {};
+      headerCells.forEach((header, colIndex) => {
+        values[header] = (cells[colIndex] ?? "").trim();
+      });
+      return {
+        rowNumber: idx + 2,
+        values,
+      } satisfies CsvRecord;
+    })
+    .filter((record) => Object.values(record.values).some((value) => value !== ""));
+
+  return { rows: dataRows };
 }
 
 const PRODUCTS_PER_PAGE = 10;
@@ -71,6 +195,11 @@ export default function ProductsPage() {
   const [whatsappMessage, setWhatsappMessage] = useState("");
   const [contactUrl, setContactUrl] = useState("");
   const [outOfStockBehavior, setOutOfStockBehavior] = useState<"label" | "auto_hide">("label");
+  const fileInputRef = useRef<HTMLInputElement | null>(null);
+  const [importing, setImporting] = useState(false);
+  const [importResult, setImportResult] = useState<ImportResult | null>(null);
+  const [importMessage, setImportMessage] = useState<string | null>(null);
+  const [showImportDialog, setShowImportDialog] = useState(false);
 
   useEffect(() => {
     loadData();
@@ -167,6 +296,80 @@ export default function ProductsPage() {
     if (!confirm("¿Estás seguro de eliminar este producto?")) return;
     await deleteProduct(id);
     loadData();
+  }
+
+  function handleDownloadTemplate() {
+    const csv = buildTemplateCsv();
+    const blob = new Blob([csv], { type: "text/csv;charset=utf-8;" });
+    const url = URL.createObjectURL(blob);
+    const link = document.createElement("a");
+    link.href = url;
+    link.download = "plantilla_productos_space.csv";
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+    URL.revokeObjectURL(url);
+  }
+
+  function handleImportClick() {
+    fileInputRef.current?.click();
+  }
+
+  async function handleImportFile(event: ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file || !store) {
+      event.target.value = "";
+      return;
+    }
+
+    setImportMessage(null);
+    setImportResult(null);
+
+    try {
+      const text = await file.text();
+      const parsed = parseCsv(text);
+
+      if (parsed.error) {
+        setImportMessage(parsed.error);
+        return;
+      }
+
+      if (parsed.rows.length === 0) {
+        setImportMessage("No se encontraron filas con datos en el archivo.");
+        return;
+      }
+
+      setImporting(true);
+
+      const payload = parsed.rows.map(({ rowNumber, values }) => ({
+        rowNumber,
+        name: values.name,
+        slug: values.slug,
+        url: values.url,
+        description: values.description,
+        price_text: values.price_text,
+        stock: values.stock,
+        catalog_slug: values.catalog_slug,
+      }));
+
+      const result: any = await importProducts(store.id, payload);
+
+      if (result?.error) {
+        setImportMessage(result.error);
+      } else if (result?.data) {
+        setImportResult(result.data);
+        if (result.data.imported > 0) {
+          loadData();
+        }
+      } else {
+        setImportMessage("No se pudo procesar el archivo.");
+      }
+    } catch (error: any) {
+      setImportMessage(error?.message || "No se pudo leer el archivo.");
+    } finally {
+      setImporting(false);
+      event.target.value = "";
+    }
   }
 
   if (loading) {
@@ -426,18 +629,41 @@ export default function ProductsPage() {
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
-      <div className="flex items-center justify-between gap-3">
-        <div className="min-w-0">
-          <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Productos</h1>
-          <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">
-            Gestiona tu inventario ({formatNumberMX(products.length)} {products.length === 1 ? 'producto' : 'productos'})
-          </p>
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={handleImportFile}
+      />
+        <div className="flex items-center justify-between gap-3">
+          <div className="min-w-0">
+            <h1 className="text-xl sm:text-2xl md:text-3xl font-bold tracking-tight">Productos</h1>
+            <p className="text-xs sm:text-sm text-muted-foreground mt-0.5 sm:mt-1 truncate">
+              Gestiona tu inventario ({formatNumberMX(products.length)} {products.length === 1 ? 'producto' : 'productos'})
+            </p>
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              variant="outline"
+              onClick={() => {
+                setImportMessage(null);
+                setImportResult(null);
+                setShowImportDialog(true);
+              }}
+              size="sm"
+              className="sm:size-default md:size-lg flex-shrink-0"
+            >
+              <Upload className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
+              <span className="hidden sm:inline">Importar CSV</span>
+              <span className="sm:hidden">Importar</span>
+            </Button>
+            <Button onClick={openCreateForm} size="sm" className="sm:size-default md:size-lg flex-shrink-0">
+              <Plus className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
+              <span className="hidden sm:inline">Nuevo</span>
+            </Button>
+          </div>
         </div>
-        <Button onClick={openCreateForm} size="sm" className="sm:size-default md:size-lg flex-shrink-0">
-          <Plus className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
-          <span className="hidden sm:inline">Nuevo</span>
-        </Button>
-      </div>
 
       {products.length === 0 ? (
         <Card>
@@ -573,6 +799,131 @@ export default function ProductsPage() {
             </div>
           )}
         </>
+      )}
+
+      {showImportDialog && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center">
+          <div
+            className="absolute inset-0 bg-black/40"
+            onClick={() => !importing && setShowImportDialog(false)}
+          />
+          <div className="relative w-full max-w-2xl px-3 sm:px-4">
+            <Card className="shadow-2xl">
+              <CardHeader className="flex flex-row items-start justify-between space-y-0">
+                <div>
+                  <CardTitle>Importar productos por CSV</CardTitle>
+                  <CardDescription>
+                    Sigue los pasos para cargar tu catálogo de forma masiva.
+                  </CardDescription>
+                </div>
+                <Button
+                  variant="ghost"
+                  size="icon"
+                  className="h-8 w-8 text-muted-foreground"
+                  onClick={() => setShowImportDialog(false)}
+                  disabled={importing}
+                >
+                  <X className="h-4 w-4" />
+                </Button>
+              </CardHeader>
+              <CardContent className="space-y-5">
+                <ol className="space-y-4 text-sm sm:text-base">
+                  <li className="flex gap-3">
+                    <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">1</div>
+                    <div className="space-y-2">
+                      <p className="font-medium">Descarga la plantilla</p>
+                      <p className="text-muted-foreground text-sm">Incluye las columnas necesarias y un ejemplo listo para editar.</p>
+                      <Button variant="outline" size="sm" onClick={handleDownloadTemplate}>
+                        <Download className="h-4 w-4 mr-2" /> Descargar CSV
+                      </Button>
+                    </div>
+                  </li>
+                  <li className="flex gap-3">
+                    <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">2</div>
+                    <div className="space-y-2">
+                      <p className="font-medium">Llena la información</p>
+                      <ul className="space-y-1 text-sm text-muted-foreground">
+                        <li>Solo <code>name</code> es obligatorio.</li>
+                        <li>Puedes pegar la URL completa en <code>url</code> y la convertiremos en slug automáticamente.</li>
+                        <li>Usa <code>catalog_slug</code> para asignar productos a un catálogo existente.</li>
+                        <li>Si prefieres definirlo manualmente, agrega una columna opcional llamada <code>slug</code>.</li>
+                      </ul>
+                      {catalogs.length > 0 && (
+                        <p className="text-xs text-muted-foreground">
+                          Catálogos disponibles:&nbsp;
+                          {catalogs.map((catalog) => (
+                            <span key={catalog.id} className="mr-2">
+                              <code>{catalog.slug}</code> ({catalog.name})
+                            </span>
+                          ))}
+                        </p>
+                      )}
+                      <p className="text-xs text-muted-foreground">
+                        Columnas soportadas: {CSV_HEADERS.map((header, index) => (
+                          <span key={header} className="mr-1">
+                            <code>{header}</code>
+                            {index < CSV_HEADERS.length - 1 ? "," : ""}
+                          </span>
+                        ))}
+                      </p>
+                    </div>
+                  </li>
+                  <li className="flex gap-3">
+                    <div className="h-7 w-7 rounded-full bg-primary/10 text-primary flex items-center justify-center font-semibold">3</div>
+                    <div className="space-y-2">
+                      <p className="font-medium">Sube el archivo</p>
+                      <p className="text-muted-foreground text-sm">Revisaremos cada fila, te diremos cuántas se importaron y si hubo errores.</p>
+                      <div className="flex flex-wrap gap-2">
+                        <Button size="sm" onClick={handleImportClick} disabled={importing}>
+                          <Upload className="h-4 w-4 mr-2" />
+                          {importing ? "Procesando..." : "Seleccionar CSV"}
+                        </Button>
+                        <Button variant="outline" size="sm" onClick={() => setShowImportDialog(false)} disabled={importing}>
+                          Cancelar
+                        </Button>
+                      </div>
+                    </div>
+                  </li>
+                </ol>
+
+                {importMessage && (
+                  <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm text-red-700">
+                    {importMessage}
+                  </div>
+                )}
+
+                {importResult && (
+                  <div className="rounded-md border border-border/80 bg-muted/40 px-3 py-2 text-sm">
+                    <p className="font-medium text-foreground">
+                      {importResult.imported} producto{importResult.imported === 1 ? "" : "s"} importado{importResult.imported === 1 ? "" : "s"} correctamente.
+                    </p>
+                    {importResult.failed > 0 ? (
+                      <div className="mt-2 space-y-1 text-red-600">
+                        <p>
+                          {importResult.failed} fila{importResult.failed === 1 ? "" : "s"} no se importaron:
+                        </p>
+                        <ul className="list-disc pl-4 space-y-0.5">
+                          {importResult.errors.slice(0, 5).map((error, idx) => (
+                            <li key={`${error.rowNumber}-${idx}`}>
+                              Fila {error.rowNumber}: {error.message}
+                            </li>
+                          ))}
+                        </ul>
+                        {importResult.failed > 5 && (
+                          <p className="text-xs text-muted-foreground">
+                            y {importResult.failed - 5} fila{importResult.failed - 5 === 1 ? "" : "s"} adicional(es) con error.
+                          </p>
+                        )}
+                      </div>
+                    ) : (
+                      <p className="text-muted-foreground mt-1">No se detectaron errores en la importación.</p>
+                    )}
+                  </div>
+                )}
+              </CardContent>
+            </Card>
+          </div>
+        </div>
       )}
     </div>
   );
