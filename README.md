@@ -29,6 +29,17 @@ Un SaaS premium para crear catálogos digitales profesionales. Permite a cualqui
 - CTAs configurables (WhatsApp, Payment Link, Contact)
 - Gestión de stock e inventario
 - Multi-tenant (cada usuario tiene su tienda)
+- Gestión de planes y facturación con Stripe (trial automático de 30 días)
+
+### Planes actuales
+
+| Plan     | Precio (MXN/mes) | Límites principales                                   |
+|----------|------------------|-------------------------------------------------------|
+| Starter  | $0               | 1 tienda, 20 productos, 2 catálogos, branding visible |
+| Growth   | $149             | 200 productos, 10 catálogos, sin branding, soporte prior. |
+| Pro      | $299             | Ilimitado, analytics avanzadas, soporte premium       |
+
+Todas las cuentas nuevas inician en **Pro** con 30 días gratis. Si no se agrega un método de pago, se degradan automáticamente a Starter al terminar la prueba. Las actualizaciones y cancelaciones se realizan vía Stripe Checkout + Customer Portal.
 
 ## Requisitos Previos
 

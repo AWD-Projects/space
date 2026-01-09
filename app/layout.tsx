@@ -1,10 +1,7 @@
 import type { Metadata } from "next";
-import { Inter } from "next/font/google";
 import "@/styles/globals.css";
 import "@/styles/tokens.css";
 import { ToastProvider } from "@/components/ui/toast-provider";
-
-const inter = Inter({ subsets: ["latin"], variable: "--font-sans" });
 
 export const metadata: Metadata = {
   title: "SPACE - Catálogo Digital Premium",
@@ -22,7 +19,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }) {
   return (
-    <html lang="es" className={inter.variable}>
+    <html lang="es">
       <body className="font-sans antialiased">
         <ToastProvider>{children}</ToastProvider>
       </body>

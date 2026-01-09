@@ -6,6 +6,7 @@ export type CtaKind = "whatsapp" | "payment_link" | "contact";
 export type ProductStatus = "active" | "hidden";
 export type EventKind = "store_view" | "product_view" | "search" | "cta_click";
 export type SubscriptionStatus = "trialing" | "active" | "past_due" | "canceled";
+export type PlanCode = "starter" | "growth" | "pro";
 export type SocialPlatform = "instagram" | "facebook" | "tiktok" | "youtube" | "x" | "whatsapp" | "website";
 export type OutOfStockBehavior = "label" | "auto_hide";
 
@@ -90,7 +91,7 @@ export interface Event {
 }
 
 export interface Plan {
-  code: string;
+  code: PlanCode;
   name: string;
   monthly_price_mxn: number;
   max_products: number | null;
@@ -103,12 +104,17 @@ export interface Plan {
 export interface Subscription {
   id: string;
   user_id: string;
-  plan_code: string;
+  plan_code: PlanCode;
   status: SubscriptionStatus;
   trial_started_at: string;
   trial_ends_at: string;
   current_period_starts_at: string | null;
   current_period_ends_at: string | null;
+  stripe_customer_id: string | null;
+  stripe_subscription_id: string | null;
+  stripe_price_id: string | null;
+  cancel_at_period_end: boolean;
+  canceled_at: string | null;
   created_at: string;
   updated_at: string;
 }

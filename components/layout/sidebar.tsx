@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
-import { Home, Package, FolderOpen, Palette, Eye, LogOut } from "lucide-react";
+import { Home, Package, FolderOpen, Palette, Eye, LogOut, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
 import { signOut } from "@/lib/actions/auth";
 import { SpaceLogo } from "@/brand/space/SpaceLogo";
@@ -13,6 +13,7 @@ const navigation = [
   { name: "Catálogos", href: "/catalogs", icon: FolderOpen },
   { name: "Branding", href: "/branding", icon: Palette },
   { name: "Preview", href: "/preview", icon: Eye },
+  { name: "Planes", href: "/billing", icon: CreditCard },
 ];
 
 interface DockItemProps {
