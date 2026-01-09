@@ -23,9 +23,7 @@ const statusLabels: Record<SubscriptionStatus, string> = {
 
 function formatDate(value?: string | null) {
   if (!value) return null;
-  return new Intl.DateTimeFormat("es-MX", {
-    dateStyle: "long",
-  }).format(new Date(value));
+  return new Intl.DateTimeFormat("es-MX", { dateStyle: "long" }).format(new Date(value));
 }
 
 export default async function BillingPage() {
@@ -61,7 +59,7 @@ export default async function BillingPage() {
             Gestiona tus planes, revisa límites y actualiza tu suscripción cuando lo necesites.
           </p>
         </div>
-        <div className="flex items-center gap-3">
+        <div className="flex flex-wrap items-center gap-3">
           <Badge
             variant={overview.subscription.status === "past_due" ? "destructive" : "secondary"}
             className="text-sm"
@@ -72,15 +70,12 @@ export default async function BillingPage() {
         </div>
       </div>
 
-      <TrialBanner
-        trialDaysLeft={overview.trialDaysLeft}
-        trialEndsAt={overview.subscription.trial_ends_at}
-      />
+      <TrialBanner trialDaysLeft={overview.trialDaysLeft} trialEndsAt={overview.subscription.trial_ends_at} />
 
       <div className="grid gap-4 lg:grid-cols-2">
         <UsageCard plan={overview.plan} usage={overview.usage} />
         <div className="rounded-2xl border border-spaceMist/80 bg-white p-5">
-          <div className="flex items-center justify-between">
+          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
             <div>
               <p className="text-sm uppercase tracking-wide text-muted-foreground">Plan actual</p>
               <h2 className="text-2xl font-semibold text-ink">{currentMarketing?.title}</h2>

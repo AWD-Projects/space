@@ -33,9 +33,6 @@ export function TrialBanner({ trialDaysLeft, trialEndsAt }: TrialBannerProps) {
           <p className="text-sm text-amber-800/80">Al terminar la prueba, pasas automáticamente al plan Starter gratis si no eliges un plan de pago.</p>
         </div>
       </div>
-      <Button className="bg-amber-600 text-white hover:bg-amber-600/90" onClick={handleClick}>
-        Revisar planes
-      </Button>
     </div>
   );
 }

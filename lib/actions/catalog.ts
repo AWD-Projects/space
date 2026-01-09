@@ -3,9 +3,22 @@
 import { createClient } from "@/lib/supabase/server";
 import { createCatalogSchema, updateCatalogSchema } from "@/lib/validators/catalog";
 import { revalidatePath } from "next/cache";
+import { ensureWithinPlanLimit } from "@/lib/utils/plan-check";
 
 export async function createCatalog(storeId: string, data: any) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "No autenticado" };
+  }
+
+  const planCheck = await ensureWithinPlanLimit(storeId, user.id, "catalogs");
+  if (!planCheck.allowed) {
+    return { error: planCheck.error };
+  }
 
   const validation = createCatalogSchema.safeParse(data);
   if (!validation.success) {

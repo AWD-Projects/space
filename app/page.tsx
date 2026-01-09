@@ -8,6 +8,8 @@ import { gsap } from "gsap";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
 import { SpaceLogo } from "@/brand/space/SpaceLogo";
 import { Button } from "@/components/ui/button";
+import { PLAN_CODES, PLAN_MARKETING } from "@/lib/constants/plans";
+import type { PlanCode } from "@/lib/types/database";
 
 gsap.registerPlugin(ScrollTrigger);
 
@@ -40,6 +42,12 @@ const ecosystem = [
   { title: "Integraciones preparadas", body: "REST hooks y Supabase events listos para conectar pagos, CRM o ERP sin fricción." },
   { title: "Soporte de clase enterprise", body: "Alertas proactivas, health checks y roadmap público para que sepas qué sigue." },
 ];
+
+const landingPlanCodes: PlanCode[] = ["starter", "growth", "pro"];
+const landingPlans = landingPlanCodes.map((code) => ({
+  code,
+  marketing: PLAN_MARKETING[code],
+}));
 
 export default function LandingPage() {
   const cardsRef = useRef<HTMLDivElement[]>([]);
@@ -193,6 +201,66 @@ export default function LandingPage() {
                 <h3 className="text-lg font-semibold text-ink">{item.title}</h3>
                 <p className="text-sm text-slate mt-1">{item.body}</p>
               </motion.div>
+            ))}
+          </div>
+        </div>
+      </section>
+
+      <section className="px-6 py-20 sm:py-28 bg-white">
+        <div className="mx-auto max-w-6xl space-y-10">
+          <div className="text-center space-y-3">
+            <div className="inline-flex items-center gap-2 rounded-full bg-spaceMist px-4 py-1 text-xs font-semibold text-spaceBlue">
+              Pricing transparente
+            </div>
+            <h2 className="text-3xl sm:text-4xl font-semibold text-ink">Planes que acompañan tu ritmo</h2>
+            <p className="text-slate max-w-2xl mx-auto">
+              Todas las cuentas arrancan con 30 días de SPACE Pro. Sin tarjeta → vuelves a Starter gratis. Cuando necesites más, eliges el plan en segundos.
+            </p>
+          </div>
+          <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-3">
+            {landingPlans.map(({ code, marketing }) => (
+              <div
+                key={code}
+                className={`flex h-full flex-col rounded-3xl border bg-white p-6 shadow-sm ${
+                  marketing.featured ? "border-spaceBlue/40 shadow-[0_20px_45px_rgba(79,107,255,0.18)]" : "border-spaceMist/70"
+                }`}
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <div>
+                    <p className="text-xs uppercase tracking-[0.35em] text-muted-foreground">Plan</p>
+                    <h3 className="text-2xl font-semibold text-ink">{marketing.title}</h3>
+                  </div>
+                  {marketing.badge && (
+                    <span className="inline-flex items-center rounded-full bg-spaceBlue/10 px-3 py-1 text-xs font-semibold text-spaceBlue">
+                      {marketing.badge}
+                    </span>
+                  )}
+                </div>
+                <p className="mt-3 text-sm text-slate">{marketing.tagline}</p>
+                <div className="mt-6 flex items-baseline gap-2">
+                  <span className="text-4xl font-semibold text-ink">
+                    {marketing.price_mxn === 0
+                      ? "$0"
+                      : new Intl.NumberFormat("es-MX", {
+                          style: "currency",
+                          currency: "MXN",
+                          maximumFractionDigits: 0,
+                        }).format(marketing.price_mxn)}
+                  </span>
+                  <span className="text-sm text-muted-foreground">{marketing.price_mxn === 0 ? "" : "/ mes"}</span>
+                </div>
+                <ul className="mt-6 flex flex-col gap-2 text-sm text-ink/90">
+                  {marketing.highlights.map((feature) => (
+                    <li key={feature} className="flex items-center gap-2">
+                      <span className="h-1.5 w-1.5 rounded-full bg-spaceBlue" />
+                      {feature}
+                    </li>
+                  ))}
+                </ul>
+                <Button asChild className="mt-8 w-full">
+                  <Link href="/signup">Empezar con {marketing.title}</Link>
+                </Button>
+              </div>
             ))}
           </div>
         </div>

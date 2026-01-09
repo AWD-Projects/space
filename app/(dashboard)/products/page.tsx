@@ -17,6 +17,8 @@ import { generateSlug } from "@/lib/utils/slug";
 import { formatStock, parseStock, formatNumberMX, formatPriceDisplay } from "@/lib/utils/formatters";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
+import { PlanLimitBanner } from "@/components/billing/plan-limit-banner";
+import { getPlanUsageSummary, type PlanUsageSummary } from "@/lib/actions/plan";
 
 interface ProductImage {
   id?: string;
@@ -181,6 +183,7 @@ export default function ProductsPage() {
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
   const [saving, setSaving] = useState(false);
   const [currentPage, setCurrentPage] = useState(1);
+  const [planUsage, setPlanUsage] = useState<PlanUsageSummary | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -222,6 +225,10 @@ export default function ProductsPage() {
 
       if (productsResult.data) setProducts(productsResult.data);
       if (catalogsResult.data) setCatalogs(catalogsResult.data);
+    }
+    const planSummary = await getPlanUsageSummary();
+    if (planSummary?.data) {
+      setPlanUsage(planSummary.data);
     }
     setLoading(false);
   }
@@ -633,6 +640,7 @@ export default function ProductsPage() {
   const startIndex = (currentPage - 1) * PRODUCTS_PER_PAGE;
   const endIndex = startIndex + PRODUCTS_PER_PAGE;
   const paginatedProducts = products.slice(startIndex, endIndex);
+  const productLimitReached = !!(planUsage?.maxProducts && planUsage.productsUsed >= planUsage.maxProducts);
 
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
@@ -660,17 +668,32 @@ export default function ProductsPage() {
               }}
               size="sm"
               className="sm:size-default md:size-lg flex-shrink-0"
+              disabled={productLimitReached}
             >
               <Upload className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Importar CSV</span>
               <span className="sm:hidden">Importar</span>
             </Button>
-            <Button onClick={openCreateForm} size="sm" className="sm:size-default md:size-lg flex-shrink-0">
+            <Button
+              onClick={openCreateForm}
+              size="sm"
+              className="sm:size-default md:size-lg flex-shrink-0"
+              disabled={productLimitReached}
+            >
               <Plus className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
               <span className="hidden sm:inline">Nuevo</span>
             </Button>
           </div>
         </div>
+
+      {planUsage?.maxProducts ? (
+        <PlanLimitBanner
+          planCode={planUsage.planCode}
+          resource="products"
+          used={planUsage.productsUsed}
+          limit={planUsage.maxProducts}
+        />
+      ) : null}
 
       {products.length === 0 ? (
         <Card>
@@ -682,7 +705,7 @@ export default function ProductsPage() {
             <p className="text-sm sm:text-base text-muted-foreground mb-4 sm:mb-6 text-center max-w-sm">
               Comienza agregando tu primer producto
             </p>
-            <Button onClick={openCreateForm} size="default" className="sm:size-lg">
+            <Button onClick={openCreateForm} size="default" className="sm:size-lg" disabled={productLimitReached}>
               <Plus className="mr-2 h-4 w-4 sm:h-5 sm:w-5" />
               Crear primer producto
             </Button>

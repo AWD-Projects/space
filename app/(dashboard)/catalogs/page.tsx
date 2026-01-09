@@ -11,6 +11,9 @@ import { Plus, Edit, Trash2, FolderOpen, Eye, EyeOff } from "lucide-react";
 import { getMyStore } from "@/lib/actions/store";
 import { getCatalogs, createCatalog, updateCatalog, deleteCatalog } from "@/lib/actions/catalog";
 import { generateSlug } from "@/lib/utils/slug";
+import { useToast } from "@/components/ui/toast-provider";
+import { PlanLimitBanner } from "@/components/billing/plan-limit-banner";
+import { getPlanUsageSummary, type PlanUsageSummary } from "@/lib/actions/plan";
 
 interface Catalog {
   id: string;
@@ -27,6 +30,8 @@ export default function CatalogsPage() {
   const [showForm, setShowForm] = useState(false);
   const [editingCatalog, setEditingCatalog] = useState<Catalog | null>(null);
   const [saving, setSaving] = useState(false);
+  const { addToast } = useToast();
+  const [planUsage, setPlanUsage] = useState<PlanUsageSummary | null>(null);
 
   // Form state
   const [name, setName] = useState("");
@@ -45,10 +50,22 @@ export default function CatalogsPage() {
       const catalogsResult: any = await getCatalogs(storeResult.data.id);
       if (catalogsResult.data) setCatalogs(catalogsResult.data);
     }
+    const planSummary = await getPlanUsageSummary();
+    if (planSummary?.data) {
+      setPlanUsage(planSummary.data);
+    }
     setLoading(false);
   }
 
   function openCreateForm() {
+    if (planUsage?.maxCatalogs && planUsage.catalogsUsed >= planUsage.maxCatalogs) {
+      addToast({
+        title: "Límite de catálogos alcanzado",
+        description: "Actualiza a Growth para crear más catálogos.",
+        variant: "error",
+      });
+      return;
+    }
     setEditingCatalog(null);
     setName("");
     setSlug("");
@@ -75,10 +92,18 @@ export default function CatalogsPage() {
       sort_order: catalogs.length,
     };
 
-    if (editingCatalog) {
-      await updateCatalog(editingCatalog.id, data);
-    } else {
-      await createCatalog(store.id, data);
+    const result = editingCatalog
+      ? await updateCatalog(editingCatalog.id, data)
+      : await createCatalog(store.id, data);
+
+    if (result?.error) {
+      addToast({
+        title: editingCatalog ? "No pudimos actualizar el catálogo" : "No pudimos crear el catálogo",
+        description: result.error,
+        variant: "error",
+      });
+      setSaving(false);
+      return;
     }
 
     setSaving(false);
@@ -88,7 +113,15 @@ export default function CatalogsPage() {
 
   async function handleDelete(id: string) {
     if (!confirm("¿Estás seguro de eliminar este catálogo? Los productos no se eliminarán.")) return;
-    await deleteCatalog(id);
+    const result = await deleteCatalog(id);
+    if (result?.error) {
+      addToast({
+        title: "No pudimos eliminar el catálogo",
+        description: result.error,
+        variant: "error",
+      });
+      return;
+    }
     loadData();
   }
 
@@ -192,6 +225,8 @@ export default function CatalogsPage() {
     );
   }
 
+  const catalogLimitReached = !!(planUsage?.maxCatalogs && planUsage.catalogsUsed >= planUsage.maxCatalogs);
+
   return (
     <div className="max-w-7xl mx-auto px-3 sm:px-4 md:px-6 py-4 sm:py-6 space-y-4 sm:space-y-6">
       <div className="flex items-center justify-between gap-3">
@@ -201,11 +236,20 @@ export default function CatalogsPage() {
             Organiza tus productos en diferentes categorías
           </p>
         </div>
-        <Button onClick={openCreateForm} size="sm" className="sm:size-default md:size-lg flex-shrink-0">
+        <Button onClick={openCreateForm} size="sm" className="sm:size-default md:size-lg flex-shrink-0" disabled={catalogLimitReached}>
           <Plus className="h-4 w-4 sm:mr-2 sm:h-5 sm:w-5" />
           <span className="hidden sm:inline">Nuevo</span>
         </Button>
       </div>
+
+      {planUsage?.maxCatalogs ? (
+        <PlanLimitBanner
+          planCode={planUsage.planCode}
+          resource="catalogs"
+          used={planUsage.catalogsUsed}
+          limit={planUsage.maxCatalogs}
+        />
+      ) : null}
 
       {catalogs.length === 0 ? (
         <Card>

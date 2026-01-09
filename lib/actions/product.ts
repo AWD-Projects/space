@@ -4,6 +4,7 @@ import { createClient } from "@/lib/supabase/server";
 import { createProductSchema, updateProductSchema } from "@/lib/validators/product";
 import { generateSlug } from "@/lib/utils/slug";
 import { revalidatePath } from "next/cache";
+import { ensureWithinPlanLimit } from "@/lib/utils/plan-check";
 
 interface BulkProductRow {
   rowNumber?: number;
@@ -30,6 +31,18 @@ function extractSlugFromUrl(input: string) {
 
 export async function createProduct(storeId: string, data: any) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "No autenticado" };
+  }
+
+  const planCheck = await ensureWithinPlanLimit(storeId, user.id, "products");
+  if (!planCheck.allowed) {
+    return { error: planCheck.error };
+  }
 
   // Separate images from product data
   const { images, ...productData } = data;
@@ -159,6 +172,18 @@ export async function getProducts(storeId: string) {
 
 export async function importProducts(storeId: string, rows: BulkProductRow[]) {
   const supabase = await createClient();
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  if (!user) {
+    return { error: "No autenticado" };
+  }
+
+  const initialCheck = await ensureWithinPlanLimit(storeId, user.id, "products");
+  if (!initialCheck.allowed) {
+    return { error: initialCheck.error };
+  }
 
   const { data: catalogs, error: catalogError } = await supabase
     .from("catalogs")
@@ -276,6 +301,13 @@ export async function importProducts(storeId: string, rows: BulkProductRow[]) {
     }
 
     successCount++;
+
+    // Re-check plan limit before the next insert
+    const planCheck = await ensureWithinPlanLimit(storeId, user.id, "products");
+    if (!planCheck.allowed) {
+      errors.push({ rowNumber, message: planCheck.error ?? "Límite alcanzado" });
+      break;
+    }
   }
 
   revalidatePath("/products");

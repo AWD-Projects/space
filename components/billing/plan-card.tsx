@@ -62,7 +62,7 @@ export function PlanCard({
 
   return (
     <div
-      className="flex flex-col rounded-2xl border border-spaceMist/80 bg-white p-5 shadow-sm"
+      className="flex h-full flex-col rounded-2xl border border-spaceMist/80 bg-white p-5 shadow-sm"
       data-current={isCurrent}
     >
       <div className="flex items-center justify-between gap-2">
