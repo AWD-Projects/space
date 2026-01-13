@@ -1,6 +1,9 @@
-import type { Types } from "mongoose";
+import { Types } from "mongoose";
 
 function mapValue(value: unknown): unknown {
+  if (value instanceof Types.ObjectId) {
+    return value.toString();
+  }
   if (value instanceof Date) {
     return value.toISOString();
   }
