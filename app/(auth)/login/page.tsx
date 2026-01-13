@@ -14,6 +14,7 @@ import { getPostAuthRedirect } from "@/lib/actions/session";
 function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [isSubmitting, setIsSubmitting] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const searchParams = useSearchParams();
@@ -53,6 +54,7 @@ function LoginContent() {
 
   async function handlePasswordSignIn() {
     if (!isLoaded || !signIn) return;
+    setIsSubmitting(true);
     try {
       let result = await signIn.create({
         identifier: email,
@@ -83,6 +85,8 @@ function LoginContent() {
         description: error?.errors?.[0]?.message ?? "No pudimos autenticarte.",
         variant: "error",
       });
+    } finally {
+      setIsSubmitting(false);
     }
   }
 
@@ -179,10 +183,10 @@ function LoginContent() {
 
               <div id="clerk-captcha" />
 
-              <Button type="submit" className="w-full" disabled={isPending}>
-                {isPending ? (
+              <Button type="submit" className="w-full" disabled={isPending || isSubmitting}>
+                {isPending || isSubmitting ? (
                   <>
-                    <Loader2 className="mr-2 h-4 w-4 animate-spin" />
+                    <Loader2 className="mr-2 h-4 w-4 animate-spin text-primary" />
                     Iniciando sesión...
                   </>
                 ) : (
@@ -190,7 +194,7 @@ function LoginContent() {
                 )}
               </Button>
 
-              <Button type="button" variant="outline" className="w-full" onClick={handleGoogle} disabled={isPending}>
+              <Button type="button" variant="outline" className="w-full" onClick={handleGoogle} disabled={isPending || isSubmitting}>
                 <Chrome className="mr-2 h-4 w-4" />
                 Continuar con Google
               </Button>
