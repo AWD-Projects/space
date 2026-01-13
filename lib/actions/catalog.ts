@@ -1,21 +1,18 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { createCatalogSchema, updateCatalogSchema } from "@/lib/validators/catalog";
 import { revalidatePath } from "next/cache";
 import { ensureWithinPlanLimit } from "@/lib/utils/plan-check";
+import { connectToDatabase } from "@/lib/db/connection";
+import { CatalogModel } from "@/lib/db/models/catalog";
+import { StoreModel } from "@/lib/db/models/store";
+import { serializeDoc } from "@/lib/db/serialization";
+import { requireAuthUserId } from "@/lib/auth";
 
 export async function createCatalog(storeId: string, data: any) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const userId = await requireAuthUserId();
 
-  if (!user) {
-    return { error: "No autenticado" };
-  }
-
-  const planCheck = await ensureWithinPlanLimit(storeId, user.id, "catalogs");
+  const planCheck = await ensureWithinPlanLimit(storeId, userId, "catalogs");
   if (!planCheck.allowed) {
     return { error: planCheck.error };
   }
@@ -25,77 +22,84 @@ export async function createCatalog(storeId: string, data: any) {
     return { error: validation.error.issues[0].message };
   }
 
-  const { data: catalog, error } = await (supabase
-    .from("catalogs") as any)
-    .insert({
-      ...validation.data,
-      store_id: storeId,
-    })
-    .select()
-    .single();
-
-  if (error) {
-    return { error: error.message };
+  await connectToDatabase();
+  const store = await StoreModel.findOne({ _id: storeId, owner_id: userId });
+  if (!store) {
+    return { error: "No autorizado" };
   }
 
-  revalidatePath("/catalogs");
-  return { data: catalog };
+  try {
+    const catalog = await CatalogModel.create({
+      ...validation.data,
+      store_id: storeId,
+    });
+    revalidatePath("/app/catalogs");
+    return { data: serializeDoc(catalog) };
+  } catch (error: any) {
+    if (error?.code === 11000) {
+      return { error: "Ya existe un catálogo con este slug" };
+    }
+    return { error: "No se pudo crear el catálogo" };
+  }
 }
 
 export async function updateCatalog(catalogId: string, data: any) {
-  const supabase = await createClient();
+  const userId = await requireAuthUserId();
 
   const validation = updateCatalogSchema.safeParse(data);
   if (!validation.success) {
     return { error: validation.error.issues[0].message };
   }
 
-  const { data: catalog, error } = await (supabase
-    .from("catalogs") as any)
-    .update({
-      ...validation.data,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", catalogId)
-    .select()
-    .single();
-
-  if (error) {
-    return { error: error.message };
+  await connectToDatabase();
+  const catalog = await CatalogModel.findOne({ _id: catalogId });
+  if (!catalog) {
+    return { error: "Catálogo no encontrado" };
   }
 
-  revalidatePath("/catalogs");
-  return { data: catalog };
+  const store = await StoreModel.findOne({ _id: catalog.store_id, owner_id: userId });
+  if (!store) {
+    return { error: "No autorizado" };
+  }
+
+  const updated = await CatalogModel.findByIdAndUpdate(
+    catalogId,
+    { ...validation.data, updated_at: new Date() },
+    { new: true }
+  );
+
+  revalidatePath("/app/catalogs");
+  return { data: serializeDoc(updated) };
 }
 
 export async function deleteCatalog(catalogId: string) {
-  const supabase = await createClient();
+  const userId = await requireAuthUserId();
+  await connectToDatabase();
 
-  const { error } = await supabase
-    .from("catalogs")
-    .delete()
-    .eq("id", catalogId);
-
-  if (error) {
-    return { error: error.message };
+  const catalog = await CatalogModel.findOne({ _id: catalogId });
+  if (!catalog) {
+    return { error: "Catálogo no encontrado" };
   }
 
-  revalidatePath("/catalogs");
+  const store = await StoreModel.findOne({ _id: catalog.store_id, owner_id: userId });
+  if (!store) {
+    return { error: "No autorizado" };
+  }
+
+  await CatalogModel.deleteOne({ _id: catalogId });
+  revalidatePath("/app/catalogs");
   return { success: true };
 }
 
 export async function getCatalogs(storeId: string) {
-  const supabase = await createClient();
+  const userId = await requireAuthUserId();
+  await connectToDatabase();
 
-  const { data: catalogs, error } = await supabase
-    .from("catalogs")
-    .select("*")
-    .eq("store_id", storeId)
-    .order("sort_order");
-
-  if (error) {
-    return { error: error.message };
+  const store = await StoreModel.findOne({ _id: storeId, owner_id: userId });
+  if (!store) {
+    return { error: "No autorizado" };
   }
 
-  return { data: catalogs };
+  const catalogs = await CatalogModel.find({ store_id: storeId }).sort({ sort_order: 1 });
+  return { data: catalogs.map((catalog) => serializeDoc(catalog)) };
 }

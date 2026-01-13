@@ -1,164 +1,150 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
+import { connectToDatabase } from "@/lib/db/connection";
+import { StoreModel } from "@/lib/db/models/store";
+import { CatalogModel } from "@/lib/db/models/catalog";
+import { ProductModel } from "@/lib/db/models/product";
+import { ProductImageModel } from "@/lib/db/models/product-image";
+import { serializeDoc } from "@/lib/db/serialization";
+import { getPublicImageUrl, parseStoragePath } from "@/lib/utils/storage";
 
-// Helper function to map 'path' to 'url' in images
-function mapImagesToUrl(data: any): any {
-  if (!data) return data;
+function attachImages(products: any[], images: any[]): any[] {
+  const imagesByProduct = new Map<string, any[]>();
+  images.forEach((img) => {
+    const productId = String(img.product_id);
+    const list = imagesByProduct.get(productId) ?? [];
+    list.push({
+      ...serializeDoc(img),
+      url: getPublicImageUrl(parseStoragePath(img.path)),
+    });
+    imagesByProduct.set(productId, list);
+  });
 
-  if (Array.isArray(data)) {
-    return data.map(item => mapImagesToUrl(item));
-  }
-
-  if (typeof data === 'object') {
-    const mapped = { ...data };
-
-    // Map images array
-    if (mapped.images) {
-      mapped.images = mapped.images.map((img: any) => ({
-        ...img,
-        url: img.path
-      }));
-    }
-
-    // Map nested products
-    if (mapped.products) {
-      mapped.products = mapImagesToUrl(mapped.products);
-    }
-
-    // Map nested catalogs
-    if (mapped.catalogs) {
-      mapped.catalogs = mapImagesToUrl(mapped.catalogs);
-    }
-
-    return mapped;
-  }
-
-  return data;
+  return products.map((product) => ({
+    ...serializeDoc(product),
+    images: imagesByProduct.get(String(product._id)) ?? [],
+  }));
 }
 
 export async function getPublicStore(slug: string) {
-  const supabase = await createClient();
-
-  const { data: store, error } = await supabase
-    .from("stores")
-    .select(`
-      *,
-      catalogs(
-        *,
-        products(
-          *,
-          images:product_images(*)
-        )
-      )
-    `)
-    .eq("slug", slug)
-    .eq("status", "published")
-    .single();
-
-  if (error) {
-    return { error: error.message };
+  await connectToDatabase();
+  const store = await StoreModel.findOne({ slug, status: "published" });
+  if (!store) {
+    return { error: "Store not found" };
   }
 
-  return { data: mapImagesToUrl(store) };
+  const catalogs = await CatalogModel.find({ store_id: store._id }).sort({ sort_order: 1 });
+  const products = await ProductModel.find({ store_id: store._id }).sort({ sort_order: 1 });
+  const productIds = products.map((product) => String(product._id));
+  const images = await ProductImageModel.find({ product_id: { $in: productIds } }).sort({ sort_order: 1 });
+
+  const productsWithImages = attachImages(products, images) as any[];
+  const productsByCatalog = new Map<string, any[]>();
+  productsWithImages.forEach((product: any) => {
+    const catalogId = product.catalog_id ?? "__uncategorized__";
+    const list = productsByCatalog.get(catalogId) ?? [];
+    list.push(product);
+    productsByCatalog.set(catalogId, list);
+  });
+
+  const catalogPayload = catalogs.map((catalog) => ({
+    ...serializeDoc(catalog),
+    products: productsByCatalog.get(String(catalog._id)) ?? [],
+  }));
+
+  return {
+    data: {
+      ...serializeDoc(store),
+      catalogs: catalogPayload,
+    },
+  };
 }
 
 export async function getPublicCatalog(storeSlug: string, catalogSlug: string) {
-  const supabase = await createClient();
-
-  // Get store first
-  const { data: storeRaw } = await supabase
-    .from("stores")
-    .select("id")
-    .eq("slug", storeSlug)
-    .eq("status", "published")
-    .single();
-
-  if (!storeRaw) {
+  await connectToDatabase();
+  const store = await StoreModel.findOne({ slug: storeSlug, status: "published" });
+  if (!store) {
     return { error: "Store not found" };
   }
 
-  const store = storeRaw as any;
+  const catalog = await CatalogModel.findOne({
+    store_id: store._id,
+    slug: catalogSlug,
+    visible: true,
+  });
 
-  // Get catalog with products
-  const { data: catalog, error } = await supabase
-    .from("catalogs")
-    .select(`
-      *,
-      products(
-        *,
-        images:product_images(*)
-      )
-    `)
-    .eq("store_id", store.id)
-    .eq("slug", catalogSlug)
-    .eq("visible", true)
-    .single();
-
-  if (error) {
-    return { error: error.message };
+  if (!catalog) {
+    return { error: "Catalog not found" };
   }
 
-  return { data: mapImagesToUrl(catalog) };
+  const products = await ProductModel.find({
+    store_id: store._id,
+    catalog_id: String(catalog._id),
+  }).sort({ sort_order: 1 });
+  const productIds = products.map((product) => String(product._id));
+  const images = await ProductImageModel.find({ product_id: { $in: productIds } }).sort({ sort_order: 1 });
+  const productsWithImages = attachImages(products, images);
+
+  return {
+    data: {
+      ...serializeDoc(catalog),
+      products: productsWithImages,
+    },
+  };
 }
 
 export async function getPublicProduct(storeSlug: string, productSlug: string) {
-  const supabase = await createClient();
-
-  // Get store first
-  const { data: storeRaw } = await supabase
-    .from("stores")
-    .select("*")
-    .eq("slug", storeSlug)
-    .eq("status", "published")
-    .single();
-
-  if (!storeRaw) {
+  await connectToDatabase();
+  const store = await StoreModel.findOne({ slug: storeSlug, status: "published" });
+  if (!store) {
     return { error: "Store not found" };
   }
 
-  const store = storeRaw as any;
+  const product = await ProductModel.findOne({
+    store_id: store._id,
+    slug: productSlug,
+    status: "active",
+  });
 
-  // Get product with images
-  const { data: productRaw, error } = await supabase
-    .from("products")
-    .select(`
-      *,
-      images:product_images(*),
-      catalog:catalogs(*)
-    `)
-    .eq("store_id", store.id)
-    .eq("slug", productSlug)
-    .eq("status", "active")
-    .single();
-
-  if (error) {
-    return { error: error.message };
+  if (!product) {
+    return { error: "Product not available" };
   }
 
-  const product = productRaw as any;
-
-  // Check if product is hidden by stock
   if (product.stock === 0 && product.out_of_stock_behavior === "auto_hide") {
     return { error: "Product not available" };
   }
 
-  return { data: { product: mapImagesToUrl(product), store } };
+  const catalog = product.catalog_id
+    ? await CatalogModel.findOne({ _id: product.catalog_id })
+    : null;
+  const images = await ProductImageModel.find({ product_id: String(product._id) }).sort({ sort_order: 1 });
+  const productWithImages = attachImages([product], images)[0];
+
+  return {
+    data: {
+      product: {
+        ...productWithImages,
+        catalog: catalog ? serializeDoc(catalog) : null,
+      },
+      store: serializeDoc(store),
+    },
+  };
 }
 
 export async function searchProducts(storeId: string, query: string) {
-  const supabase = await createClient();
+  await connectToDatabase();
+  const sanitized = query.trim();
+  if (!sanitized) {
+    return { data: [] };
+  }
 
-  const { data: products } = await supabase
-    .from("products")
-    .select(`
-      *,
-      images:product_images(*)
-    `)
-    .eq("store_id", storeId)
-    .eq("status", "active")
-    .or(`name.ilike.%${query}%,description.ilike.%${query}%`)
-    .order("sort_order");
-
-  return { data: mapImagesToUrl(products || []) };
+  const products = await ProductModel.find({
+    store_id: storeId,
+    status: "active",
+    $text: { $search: sanitized },
+  }).sort({ sort_order: 1 });
+  const productIds = products.map((product) => String(product._id));
+  const images = await ProductImageModel.find({ product_id: { $in: productIds } }).sort({ sort_order: 1 });
+  const productsWithImages = attachImages(products, images);
+  return { data: productsWithImages };
 }

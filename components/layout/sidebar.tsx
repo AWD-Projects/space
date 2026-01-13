@@ -4,16 +4,16 @@ import Link from "next/link";
 import { usePathname, useRouter } from "next/navigation";
 import { Home, Package, FolderOpen, Palette, Eye, LogOut, CreditCard } from "lucide-react";
 import { cn } from "@/lib/utils/cn";
-import { signOut } from "@/lib/actions/auth";
 import { SpaceLogo } from "@/brand/space/SpaceLogo";
+import { useClerk } from "@clerk/nextjs";
 
 const navigation = [
-  { name: "Dashboard", href: "/home", icon: Home },
-  { name: "Productos", href: "/products", icon: Package },
-  { name: "Catálogos", href: "/catalogs", icon: FolderOpen },
-  { name: "Branding", href: "/branding", icon: Palette },
-  { name: "Preview", href: "/preview", icon: Eye },
-  { name: "Planes", href: "/billing", icon: CreditCard },
+  { name: "Dashboard", href: "/app/home", icon: Home },
+  { name: "Productos", href: "/app/products", icon: Package },
+  { name: "Catálogos", href: "/app/catalogs", icon: FolderOpen },
+  { name: "Branding", href: "/app/branding", icon: Palette },
+  { name: "Preview", href: "/app/preview", icon: Eye },
+  { name: "Planes", href: "/app/billing", icon: CreditCard },
 ];
 
 interface DockItemProps {
@@ -71,6 +71,7 @@ function DockItem({ icon: Icon, label, href, onClick, active }: DockItemProps) {
 export function Sidebar() {
   const pathname = usePathname();
   const router = useRouter();
+  const { signOut } = useClerk();
 
   const handleLogout = async () => {
     await signOut();

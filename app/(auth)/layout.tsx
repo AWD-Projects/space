@@ -1,25 +1,20 @@
 import type { ReactNode } from "react";
 import { redirect } from "next/navigation";
-import { createClient } from "@/lib/supabase/server";
+import { auth } from "@clerk/nextjs/server";
+import { getStoreByOwnerId } from "@/lib/db/queries/store";
 
 export default async function AuthLayout({ children }: { children: ReactNode }) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+  const { userId } = await auth();
 
-  if (user) {
-    const { data: store } = await supabase
-      .from("stores")
-      .select("id, status")
-      .eq("owner_id", user.id)
-      .maybeSingle<{ id: string; status: "draft" | "published" }>();
+  if (userId) {
+    const store = await getStoreByOwnerId(userId);
+    const status = store?.status as "draft" | "published" | undefined;
 
-    if (!store || store.status !== "published") {
+    if (!store || status !== "published") {
       redirect("/onboarding");
     }
 
-    redirect("/home");
+    redirect("/app/home");
   }
 
   return <>{children}</>;

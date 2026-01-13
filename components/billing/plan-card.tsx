@@ -47,10 +47,10 @@ export function PlanCard({
     startTransition(async () => {
       const result = await createCheckoutSession(planCode);
 
-      if (result?.error || !result?.data?.url) {
+      if ("error" in result || !result.data?.url) {
         addToast({
           title: "No se pudo iniciar el checkout",
-          description: result?.error ?? "Intenta de nuevo en unos minutos.",
+          description: "error" in result ? result.error : "Intenta de nuevo en unos minutos.",
           variant: "error",
         });
         return;

@@ -1,4 +1,4 @@
-// Database Types - Generated from Supabase Schema
+// Database Types - Shared domain types
 
 export type StoreStatus = "draft" | "published";
 export type TemplateKind = "minimal" | "visual" | "compact";

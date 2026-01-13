@@ -1,4 +1,5 @@
 import type { Metadata } from "next";
+import { ClerkProvider } from "@clerk/nextjs";
 import "@/styles/globals.css";
 import "@/styles/tokens.css";
 import { ToastProvider } from "@/components/ui/toast-provider";
@@ -21,7 +22,9 @@ export default function RootLayout({
   return (
     <html lang="es">
       <body className="font-sans antialiased">
-        <ToastProvider>{children}</ToastProvider>
+        <ClerkProvider>
+          <ToastProvider>{children}</ToastProvider>
+        </ClerkProvider>
       </body>
     </html>
   );

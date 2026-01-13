@@ -1,5 +1,11 @@
-import { createClient } from "@/lib/supabase/server";
 import type { PlanCode } from "@/lib/types/database";
+import { connectToDatabase } from "@/lib/db/connection";
+import { SubscriptionModel } from "@/lib/db/models/subscription";
+import { PlanModel } from "@/lib/db/models/plan";
+import { ProductModel } from "@/lib/db/models/product";
+import { CatalogModel } from "@/lib/db/models/catalog";
+import { ensurePlansSeeded } from "@/lib/db/utils/plans";
+import { getOrCreateSubscription } from "@/lib/db/utils/subscription";
 
 type PlanLimits = {
   planCode: PlanCode;
@@ -8,23 +14,21 @@ type PlanLimits = {
 };
 
 export async function getPlanLimitsForUser(userId: string): Promise<PlanLimits | null> {
-  const supabase = await createClient();
+  await connectToDatabase();
+  await ensurePlansSeeded();
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("plan_code")
-    .eq("user_id", userId)
-    .maybeSingle<{ plan_code: PlanCode }>();
+  const subscriptionDoc = await SubscriptionModel.findOne({ user_id: userId }).lean<{ plan_code: PlanCode }>();
+  const subscription = subscriptionDoc ?? (await getOrCreateSubscription(userId));
 
   if (!subscription) {
     return null;
   }
 
-  const { data: plan } = await supabase
-    .from("plans")
-    .select("code, max_products, max_catalogs")
-    .eq("code", subscription.plan_code)
-    .maybeSingle<{ code: PlanCode; max_products: number | null; max_catalogs: number | null }>();
+  const plan = await PlanModel.findOne({ code: subscription.plan_code }).lean<{
+    code: PlanCode;
+    max_products: number | null;
+    max_catalogs: number | null;
+  }>();
 
   if (!plan) {
     return null;
@@ -48,18 +52,17 @@ export async function ensureWithinPlanLimit(
     return { allowed: false, error: "No encontramos tu suscripción." };
   }
 
-  const supabase = await createClient();
-  const table = type === "products" ? "products" : "catalogs";
   const max = type === "products" ? planLimits.maxProducts : planLimits.maxCatalogs;
 
   if (!max || max <= 0) {
     return { allowed: true };
   }
 
-  const { count } = await supabase
-    .from(table)
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId);
+  await connectToDatabase();
+  const count =
+    type === "products"
+      ? await ProductModel.countDocuments({ store_id: storeId })
+      : await CatalogModel.countDocuments({ store_id: storeId });
 
   if ((count ?? 0) >= max) {
     const planName = planLimits.planCode === "starter" ? "Starter" : "Growth";

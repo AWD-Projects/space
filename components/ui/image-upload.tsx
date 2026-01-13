@@ -1,24 +1,26 @@
 "use client";
 
 import { useState } from "react";
-import { createClient } from "@/lib/supabase/client";
 import { Button } from "./button";
 import { X, Upload, Loader2 } from "lucide-react";
 import Image from "next/image";
 import { useToast } from "@/components/ui/toast-provider";
+import { createSignedUploadUrl } from "@/lib/actions/storage";
 
 interface ImageUploadProps {
-  images: Array<{ id?: string; url: string; sort_order: number }>;
-  onImagesChange: (images: Array<{ id?: string; url: string; sort_order: number }>) => void;
+  images: Array<{ id?: string; path: string; url: string; sort_order: number }>;
+  onImagesChange: (images: Array<{ id?: string; path: string; url: string; sort_order: number }>) => void;
   maxImages?: number;
-  bucket?: string;
+  storeId?: string;
+  productId?: string;
 }
 
 export function ImageUpload({
   images,
   onImagesChange,
   maxImages = 5,
-  bucket = "public-images"
+  storeId,
+  productId,
 }: ImageUploadProps) {
   const [uploading, setUploading] = useState(false);
   const { addToast } = useToast();
@@ -35,7 +37,6 @@ export function ImageUpload({
     }
 
     setUploading(true);
-    const supabase = createClient();
     const newImages = [];
 
     try {
@@ -52,32 +53,39 @@ export function ImageUpload({
           continue;
         }
 
-        // Generate unique filename
-        const fileExt = file.name.split(".").pop();
-        const fileName = `${Math.random().toString(36).substring(2)}-${Date.now()}.${fileExt}`;
-        const filePath = `${fileName}`;
+        if (!storeId) {
+          addToast({ title: "Error al subir", description: "No se encontró la tienda.", variant: "error" });
+          continue;
+        }
 
-        // Upload to Supabase Storage
-        const { error: uploadError } = await supabase.storage
-          .from(bucket)
-          .upload(filePath, file, {
-            cacheControl: "3600",
-            upsert: false,
-          });
+        const signed = await createSignedUploadUrl({
+          storeId,
+          productId,
+          fileName: file.name,
+          contentType: file.type,
+        });
 
-        if (uploadError) {
-          console.error("Upload error:", uploadError);
+        if (signed?.error || !signed?.data?.signedUrl) {
+          addToast({ title: "Error al subir", description: signed?.error ?? "No se pudo firmar el upload", variant: "error" });
+          continue;
+        }
+
+        const uploadResponse = await fetch(signed.data.signedUrl, {
+          method: "PUT",
+          headers: {
+            "Content-Type": file.type,
+          },
+          body: file,
+        });
+
+        if (!uploadResponse.ok) {
           addToast({ title: "Error al subir", description: `No se pudo subir ${file.name}`, variant: "error" });
           continue;
         }
 
-        // Get public URL
-        const { data: { publicUrl } } = supabase.storage
-          .from(bucket)
-          .getPublicUrl(filePath);
-
         newImages.push({
-          url: publicUrl,
+          path: signed.data.path,
+          url: signed.data.publicUrl,
           sort_order: images.length + newImages.length,
         });
       }

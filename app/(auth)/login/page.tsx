@@ -1,21 +1,25 @@
 "use client";
 
 import { Suspense, useEffect, useState, useTransition } from "react";
-import { signIn } from "@/lib/actions/auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import Link from "next/link";
-import { Eye, EyeOff, Sparkles, Shield, LayoutGrid, Loader2 } from "lucide-react";
+import { Chrome, Eye, EyeOff, Sparkles, Shield, LayoutGrid, Loader2 } from "lucide-react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { useToast } from "@/components/ui/toast-provider";
+import { useSignIn } from "@clerk/nextjs";
+import { getPostAuthRedirect } from "@/lib/actions/session";
 
 function LoginContent() {
   const [showPassword, setShowPassword] = useState(false);
   const [isPending, startTransition] = useTransition();
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
   const searchParams = useSearchParams();
   const router = useRouter();
   const { addToast } = useToast();
+  const { signIn, setActive, isLoaded } = useSignIn();
 
   useEffect(() => {
     const errorParam = searchParams.get("error");
@@ -42,9 +46,45 @@ function LoginContent() {
 
   async function handleSubmit(e: React.FormEvent<HTMLFormElement>) {
     e.preventDefault();
-    const formData = new FormData(e.currentTarget);
     startTransition(() => {
-      signIn(formData);
+      handlePasswordSignIn();
+    });
+  }
+
+  async function handlePasswordSignIn() {
+    if (!isLoaded || !signIn) return;
+    try {
+      const result = await signIn.create({
+        identifier: email,
+        password,
+      });
+
+      if (result.status === "complete") {
+        await setActive({ session: result.createdSessionId });
+        const redirectResult = await getPostAuthRedirect();
+        router.push(redirectResult?.redirectTo ?? "/app/home");
+      } else {
+        addToast({
+          title: "Revisa tu cuenta",
+          description: "Completa el inicio de sesión en Clerk.",
+          variant: "error",
+        });
+      }
+    } catch (error: any) {
+      addToast({
+        title: "Error al iniciar sesión",
+        description: error?.errors?.[0]?.message ?? "No pudimos autenticarte.",
+        variant: "error",
+      });
+    }
+  }
+
+  async function handleGoogle() {
+    if (!isLoaded || !signIn) return;
+    await signIn.authenticateWithRedirect({
+      strategy: "oauth_google",
+      redirectUrl: "/login",
+      redirectUrlComplete: "/app/home",
     });
   }
 
@@ -98,6 +138,8 @@ function LoginContent() {
                   name="email"
                   type="email"
                   placeholder="tu@email.com"
+                  value={email}
+                  onChange={(e) => setEmail(e.target.value)}
                 required
                 disabled={isPending}
                 className="bg-cloud"
@@ -114,6 +156,8 @@ function LoginContent() {
                     required
                     disabled={isPending}
                     className="pr-10 bg-cloud"
+                    value={password}
+                    onChange={(e) => setPassword(e.target.value)}
                   />
                   <button
                     type="button"
@@ -135,6 +179,11 @@ function LoginContent() {
                 ) : (
                   "Iniciar sesión"
                 )}
+              </Button>
+
+              <Button type="button" variant="outline" className="w-full" onClick={handleGoogle} disabled={isPending}>
+                <Chrome className="mr-2 h-4 w-4" />
+                Continuar con Google
               </Button>
 
               <p className="text-sm text-center text-slate">

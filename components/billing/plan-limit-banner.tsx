@@ -55,7 +55,7 @@ export function PlanLimitBanner({ planCode, resource, used, limit }: PlanLimitBa
           </div>
         </div>
         <Button asChild variant="outline" className="border-amber-300 text-amber-800 hover:bg-amber-100">
-          <Link href="/billing" className="flex items-center gap-2 text-sm font-semibold">
+          <Link href="/app/billing" className="flex items-center gap-2 text-sm font-semibold">
             Actualizar plan
             <ArrowUpRight className="h-4 w-4" />
           </Link>

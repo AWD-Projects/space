@@ -1,8 +1,9 @@
 import { NextResponse, type NextRequest } from "next/server";
 import type Stripe from "stripe";
 import { stripe } from "@/lib/stripe/client";
-import { adminClient } from "@/lib/supabase/admin";
 import { getPlanCodeFromPriceId } from "@/lib/stripe/plans";
+import { connectToDatabase } from "@/lib/db/connection";
+import { SubscriptionModel } from "@/lib/db/models/subscription";
 
 export const runtime = "nodejs";
 
@@ -28,39 +29,33 @@ async function updateSubscriptionFromStripe(sub: Stripe.Subscription) {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   if (!customerId) return;
 
-  const { data: current } = await adminClient
-    .from("subscriptions")
-    .select("id,plan_code")
-    .eq("stripe_customer_id", customerId)
-    .single();
-
-  if (!current) {
-    return;
-  }
+  await connectToDatabase();
+  const current = await SubscriptionModel.findOne({ stripe_customer_id: customerId });
+  if (!current) return;
 
   const priceId = sub.items.data[0]?.price.id ?? null;
   const planCode = getPlanCodeFromPriceId(priceId) ?? current.plan_code;
 
   const legacy = sub as SubscriptionWithPeriods;
 
-  await adminClient
-    .from("subscriptions")
-    .update({
+  await SubscriptionModel.updateOne(
+    { _id: current._id },
+    {
       plan_code: planCode,
       status: mapStatus(sub.status),
       stripe_subscription_id: sub.id,
       stripe_price_id: priceId,
       cancel_at_period_end: sub.cancel_at_period_end,
       current_period_starts_at: legacy.current_period_start
-        ? new Date(legacy.current_period_start * 1000).toISOString()
+        ? new Date(legacy.current_period_start * 1000)
         : null,
       current_period_ends_at: legacy.current_period_end
-        ? new Date(legacy.current_period_end * 1000).toISOString()
+        ? new Date(legacy.current_period_end * 1000)
         : null,
-      canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000).toISOString() : null,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", current.id);
+      canceled_at: sub.canceled_at ? new Date(sub.canceled_at * 1000) : null,
+      updated_at: new Date(),
+    }
+  );
 }
 
 async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
@@ -72,26 +67,19 @@ async function handleCheckoutCompleted(session: Stripe.Checkout.Session) {
   const subscriptionId =
     typeof session.subscription === "string" ? session.subscription : session.subscription?.id;
 
-  const userId = session.metadata?.supabase_user_id ?? null;
+  const userId = session.metadata?.clerk_user_id ?? null;
 
-  const updatePayload: Record<string, string | null> = {
-    stripe_customer_id: customerId,
-  };
+  const updatePayload: Record<string, string | null> = { stripe_customer_id: customerId };
 
   if (subscriptionId) {
     updatePayload.stripe_subscription_id = subscriptionId;
   }
 
+  await connectToDatabase();
   if (userId) {
-    await adminClient
-      .from("subscriptions")
-      .update(updatePayload)
-      .eq("user_id", userId);
+    await SubscriptionModel.updateOne({ user_id: userId }, updatePayload);
   } else {
-    await adminClient
-      .from("subscriptions")
-      .update(updatePayload)
-      .eq("stripe_customer_id", customerId);
+    await SubscriptionModel.updateOne({ stripe_customer_id: customerId }, updatePayload);
   }
 }
 
@@ -99,9 +87,10 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
   const customerId = typeof sub.customer === "string" ? sub.customer : sub.customer.id;
   if (!customerId) return;
 
-  await adminClient
-    .from("subscriptions")
-    .update({
+  await connectToDatabase();
+  await SubscriptionModel.updateOne(
+    { stripe_customer_id: customerId },
+    {
       plan_code: "starter",
       status: "active",
       stripe_subscription_id: null,
@@ -109,10 +98,10 @@ async function handleSubscriptionDeleted(sub: Stripe.Subscription) {
       cancel_at_period_end: false,
       current_period_starts_at: null,
       current_period_ends_at: null,
-      canceled_at: new Date().toISOString(),
-      updated_at: new Date().toISOString(),
-    })
-    .eq("stripe_customer_id", customerId);
+      canceled_at: new Date(),
+      updated_at: new Date(),
+    }
+  );
 }
 
 export async function POST(req: NextRequest) {

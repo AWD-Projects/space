@@ -19,10 +19,10 @@ export function ManageSubscriptionButton({ disabled }: Props) {
 
     startTransition(async () => {
       const result = await createCustomerPortalSession();
-      if (result?.error || !result?.data?.url) {
+      if ("error" in result || !result.data?.url) {
         addToast({
           title: "No se pudo abrir Stripe",
-          description: result?.error ?? "Inténtalo de nuevo en unos segundos.",
+          description: "error" in result ? result.error : "Inténtalo de nuevo en unos segundos.",
           variant: "error",
         });
         return;

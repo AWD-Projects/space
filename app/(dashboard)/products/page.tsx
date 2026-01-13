@@ -22,6 +22,7 @@ import { getPlanUsageSummary, type PlanUsageSummary } from "@/lib/actions/plan";
 
 interface ProductImage {
   id?: string;
+  path: string;
   url: string;
   sort_order: number;
 }
@@ -199,6 +200,7 @@ export default function ProductsPage() {
   const [whatsappMessage, setWhatsappMessage] = useState("");
   const [contactUrl, setContactUrl] = useState("");
   const [outOfStockBehavior, setOutOfStockBehavior] = useState<"label" | "auto_hide">("label");
+  const [draftProductId, setDraftProductId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
   const [importing, setImporting] = useState(false);
   const [importResult, setImportResult] = useState<ImportResult | null>(null);
@@ -248,6 +250,7 @@ export default function ProductsPage() {
     setWhatsappMessage("");
     setContactUrl("");
     setOutOfStockBehavior("label");
+    setDraftProductId(crypto.randomUUID());
     setShowForm(true);
   }
 
@@ -266,6 +269,7 @@ export default function ProductsPage() {
     setWhatsappMessage(product.whatsapp_message || "");
     setContactUrl(product.contact_url || "");
     setOutOfStockBehavior(product.out_of_stock_behavior || "label");
+    setDraftProductId(null);
     setShowForm(true);
   }
 
@@ -275,6 +279,7 @@ export default function ProductsPage() {
     setSaving(true);
 
     const data = {
+      id: editingProduct ? editingProduct.id : draftProductId,
       name,
       slug,
       description: description || null,
@@ -303,6 +308,7 @@ export default function ProductsPage() {
 
     setSaving(false);
     setShowForm(false);
+    setDraftProductId(null);
     loadData();
   }
 
@@ -564,6 +570,8 @@ export default function ProductsPage() {
               images={images}
               onImagesChange={setImages}
               maxImages={5}
+              storeId={store?.id}
+              productId={editingProduct?.id ?? draftProductId ?? undefined}
             />
           </CardContent>
         </Card>

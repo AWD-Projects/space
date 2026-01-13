@@ -1,110 +1,47 @@
 "use server";
 
-import { createClient } from "@/lib/supabase/server";
 import { subDays } from "date-fns";
+import { connectToDatabase } from "@/lib/db/connection";
+import { EventModel } from "@/lib/db/models/event";
+import { ProductModel } from "@/lib/db/models/product";
 
 export async function getStoreAnalytics(storeId: string, days: number = 7) {
-  const supabase = await createClient();
-  const startDate = subDays(new Date(), days).toISOString();
+  await connectToDatabase();
+  const startDate = subDays(new Date(), days);
 
-  // Store views
-  const { count: storeViews } = await supabase
-    .from("events")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId)
-    .eq("kind", "store_view")
-    .gte("occurred_at", startDate);
+  const [storeViews, productViews, ctaClicks] = await Promise.all([
+    EventModel.countDocuments({ store_id: storeId, kind: "store_view", occurred_at: { $gte: startDate } }),
+    EventModel.countDocuments({ store_id: storeId, kind: "product_view", occurred_at: { $gte: startDate } }),
+    EventModel.countDocuments({ store_id: storeId, kind: "cta_click", occurred_at: { $gte: startDate } }),
+  ]);
 
-  // Product views
-  const { count: productViews } = await supabase
-    .from("events")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId)
-    .eq("kind", "product_view")
-    .gte("occurred_at", startDate);
+  const [activeProducts, outOfStock] = await Promise.all([
+    ProductModel.countDocuments({ store_id: storeId, status: "active" }),
+    ProductModel.countDocuments({ store_id: storeId, stock: 0 }),
+  ]);
 
-  // CTA clicks
-  const { count: ctaClicks } = await supabase
-    .from("events")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId)
-    .eq("kind", "cta_click")
-    .gte("occurred_at", startDate);
+  const [topViewCounts, topClickCounts] = await Promise.all([
+    EventModel.aggregate([
+      { $match: { store_id: storeId, kind: "product_view", product_id: { $ne: null }, occurred_at: { $gte: startDate } } },
+      { $group: { _id: "$product_id", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+    EventModel.aggregate([
+      { $match: { store_id: storeId, kind: "cta_click", product_id: { $ne: null }, occurred_at: { $gte: startDate } } },
+      { $group: { _id: "$product_id", count: { $sum: 1 } } },
+      { $sort: { count: -1 } },
+      { $limit: 5 },
+    ]),
+  ]);
 
-  // Active products
-  const { count: activeProducts } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId)
-    .eq("status", "active");
+  const topIds = Array.from(new Set([
+    ...topViewCounts.map((item: any) => String(item._id)),
+    ...topClickCounts.map((item: any) => String(item._id)),
+  ]));
 
-  // Out of stock products
-  const { count: outOfStock } = await supabase
-    .from("products")
-    .select("*", { count: "exact", head: true })
-    .eq("store_id", storeId)
-    .eq("stock", 0);
-
-  // Top products by views
-  const { data: topProductsByViews } = await supabase
-    .from("events")
-    .select(`
-      product_id,
-      products(name)
-    `)
-    .eq("store_id", storeId)
-    .eq("kind", "product_view")
-    .not("product_id", "is", null)
-    .gte("occurred_at", startDate);
-
-  // Top products by clicks
-  const { data: topProductsByClicks } = await supabase
-    .from("events")
-    .select(`
-      product_id,
-      products(name)
-    `)
-    .eq("store_id", storeId)
-    .eq("kind", "cta_click")
-    .not("product_id", "is", null)
-    .gte("occurred_at", startDate);
-
-  // Aggregate top products
-  const productViewCounts: Record<string, { name: string; count: number }> = {};
-  topProductsByViews?.forEach((event: any) => {
-    if (event.product_id && event.products) {
-      if (!productViewCounts[event.product_id]) {
-        productViewCounts[event.product_id] = {
-          name: event.products.name,
-          count: 0,
-        };
-      }
-      productViewCounts[event.product_id].count++;
-    }
-  });
-
-  const productClickCounts: Record<string, { name: string; count: number }> = {};
-  topProductsByClicks?.forEach((event: any) => {
-    if (event.product_id && event.products) {
-      if (!productClickCounts[event.product_id]) {
-        productClickCounts[event.product_id] = {
-          name: event.products.name,
-          count: 0,
-        };
-      }
-      productClickCounts[event.product_id].count++;
-    }
-  });
-
-  const topViews = Object.entries(productViewCounts)
-    .map(([id, data]) => ({ id, ...data }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
-
-  const topClicks = Object.entries(productClickCounts)
-    .map(([id, data]) => ({ id, ...data }))
-    .sort((a, b) => b.count - a.count)
-    .slice(0, 5);
+  const products = await ProductModel.find({ _id: { $in: topIds } }).select("name");
+  const productNameMap = new Map(products.map((product) => [String(product._id), product.name]));
 
   return {
     storeViews: storeViews || 0,
@@ -112,8 +49,16 @@ export async function getStoreAnalytics(storeId: string, days: number = 7) {
     ctaClicks: ctaClicks || 0,
     activeProducts: activeProducts || 0,
     outOfStock: outOfStock || 0,
-    topProductsByViews: topViews,
-    topProductsByClicks: topClicks,
+    topProductsByViews: topViewCounts.map((item: any) => ({
+      id: String(item._id),
+      name: productNameMap.get(String(item._id)) ?? "Producto",
+      count: item.count,
+    })),
+    topProductsByClicks: topClickCounts.map((item: any) => ({
+      id: String(item._id),
+      name: productNameMap.get(String(item._id)) ?? "Producto",
+      count: item.count,
+    })),
   };
 }
 
@@ -128,9 +73,9 @@ export async function trackEvent(
     clientHash?: string;
   }
 ) {
-  const supabase = await createClient();
+  await connectToDatabase();
 
-  await supabase.from("events").insert({
+  await EventModel.create({
     store_id: storeId,
     kind,
     product_id: data?.productId || null,
@@ -138,6 +83,6 @@ export async function trackEvent(
     cta_kind: data?.ctaKind || null,
     session_id: data?.sessionId || null,
     client_hash: data?.clientHash || null,
-    occurred_at: new Date().toISOString(),
-  } as any);
+    occurred_at: new Date(),
+  });
 }

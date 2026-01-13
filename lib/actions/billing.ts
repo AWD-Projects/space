@@ -1,12 +1,18 @@
 "use server";
 
-import type { User, SupabaseClient } from "@supabase/supabase-js";
-import { createClient } from "@/lib/supabase/server";
 import { stripe } from "@/lib/stripe/client";
 import { getPriceIdForPlan } from "@/lib/stripe/plans";
 import type { Plan, PlanCode, Store, Subscription } from "@/lib/types/database";
 import { PLAN_CODES } from "@/lib/constants/plans";
 import { getTrialDaysLeft, isPaidPlan } from "@/lib/utils/billing";
+import { connectToDatabase } from "@/lib/db/connection";
+import { PlanModel } from "@/lib/db/models/plan";
+import { StoreModel } from "@/lib/db/models/store";
+import { SubscriptionModel } from "@/lib/db/models/subscription";
+import { ensurePlansSeeded } from "@/lib/db/utils/plans";
+import { getOrCreateSubscription } from "@/lib/db/utils/subscription";
+import { serializeDoc } from "@/lib/db/serialization";
+import { getClerkProfile, requireAuthUserId } from "@/lib/auth";
 
 const APP_URL = process.env.NEXT_PUBLIC_APP_URL ?? "http://localhost:3000";
 
@@ -25,89 +31,56 @@ type BillingOverviewResult = {
   } | null;
 };
 
-async function ensureStripeCustomer(
-  supabase: SupabaseClient,
-  subscription: Subscription,
-  user: User
-) {
+async function ensureStripeCustomer(subscription: Subscription, userId: string) {
   if (subscription.stripe_customer_id) {
     return subscription.stripe_customer_id;
   }
 
+  const clerkProfile = await getClerkProfile(userId);
   const customer = await stripe.customers.create({
-    email: user.email ?? undefined,
-    name: user.user_metadata?.full_name ?? undefined,
+    email: clerkProfile.email ?? undefined,
+    name: clerkProfile.fullName ?? undefined,
     metadata: {
-      supabase_user_id: user.id,
+      clerk_user_id: userId,
     },
   });
 
-  await supabase
-    .from("subscriptions")
-    .update({
-      stripe_customer_id: customer.id,
-      updated_at: new Date().toISOString(),
-    })
-    .eq("id", subscription.id);
+  await SubscriptionModel.updateOne(
+    { _id: subscription.id },
+    { stripe_customer_id: customer.id, updated_at: new Date() }
+  );
 
   return customer.id;
 }
 
 export async function getBillingOverview(): Promise<{ data?: BillingOverviewResult; error?: string }> {
-  const supabase = await createClient();
-  const {
-    data: { user },
-    error: userError,
-  } = await supabase.auth.getUser();
+  const userId = await requireAuthUserId();
+  await connectToDatabase();
+  await ensurePlansSeeded();
 
-  if (userError || !user) {
-    return { error: "No autenticado" };
-  }
+  const subscriptionDoc = await getOrCreateSubscription(userId);
+  const subscription = serializeDoc(subscriptionDoc) as unknown as Subscription;
 
-  const { data: subscription, error: subscriptionError } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .single<Subscription>();
-
-  if (subscriptionError || !subscription) {
-    return { error: "No se encontró la suscripción" };
-  }
-
-  const { data: plan, error: planError } = await supabase
-    .from("plans")
-    .select("*")
-    .eq("code", subscription.plan_code)
-    .single<Plan>();
-
-  if (planError || !plan) {
+  const plan = await PlanModel.findOne({ code: subscription.plan_code }).lean<Plan>();
+  if (!plan) {
     return { error: "No se encontró el plan" };
   }
 
-  const { data: store } = await supabase
-    .from("stores")
-    .select("id,name,slug")
-    .eq("owner_id", user.id)
-    .single<Pick<Store, "id" | "name" | "slug">>();
+  const store = await StoreModel.findOne({ owner_id: userId }).select("name slug");
+  const storeId = store?._id ? String(store._id) : null;
 
-  const storeId = store?.id;
+  const [products, catalogs] = storeId
+    ? await Promise.all([
+        import("@/lib/db/models/product").then(({ ProductModel }) =>
+          ProductModel.countDocuments({ store_id: storeId })
+        ),
+        import("@/lib/db/models/catalog").then(({ CatalogModel }) =>
+          CatalogModel.countDocuments({ store_id: storeId })
+        ),
+      ])
+    : [0, 0];
 
-  const [{ count: products = 0 }, { count: catalogs = 0 }] = await Promise.all([
-    storeId
-      ? supabase
-          .from("products")
-          .select("*", { count: "exact", head: true })
-          .eq("store_id", storeId)
-      : Promise.resolve({ count: 0 }),
-    storeId
-      ? supabase
-          .from("catalogs")
-          .select("*", { count: "exact", head: true })
-          .eq("store_id", storeId)
-      : Promise.resolve({ count: 0 }),
-  ]);
-
-  await ensureStripeCustomer(supabase, subscription, user);
+  await ensureStripeCustomer(subscription, userId);
 
   return {
     data: {
@@ -121,17 +94,23 @@ export async function getBillingOverview(): Promise<{ data?: BillingOverviewResu
         catalogs: catalogs ?? 0,
       },
       trialDaysLeft: getTrialDaysLeft(subscription),
-      store,
+      store: store
+        ? {
+            id: String(store._id),
+            name: store.name,
+            slug: store.slug,
+          }
+        : null,
     },
   };
 }
 
 export async function getAvailablePlans(): Promise<{ data?: Plan[]; error?: string }> {
-  const supabase = await createClient();
+  await connectToDatabase();
+  await ensurePlansSeeded();
 
-  const { data: plans, error } = await supabase.from("plans").select("*").returns<Plan[]>();
-
-  if (error || !plans) {
+  const plans = await PlanModel.find({}).lean<Plan[]>();
+  if (!plans || plans.length === 0) {
     return { error: "No se pudieron cargar los planes" };
   }
 
@@ -144,47 +123,32 @@ export async function getAvailablePlans(): Promise<{ data?: Plan[]; error?: stri
   return { data: ordered };
 }
 
-export async function createCheckoutSession(planCode: PlanCode) {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export async function createCheckoutSession(
+  planCode: PlanCode
+): Promise<{ data: { url: string | null } } | { error: string }> {
+  const userId = await requireAuthUserId();
+  await connectToDatabase();
+  await ensurePlansSeeded();
 
-  if (!user) {
-    return { error: "No autenticado" };
-  }
+  const subscriptionDoc = await getOrCreateSubscription(userId);
+  const subscription = serializeDoc(subscriptionDoc) as unknown as Subscription;
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .single<Subscription>();
-
-  if (!subscription) {
-    return { error: "No se encontró la suscripción" };
-  }
-
-  const { data: plan } = await supabase
-    .from("plans")
-    .select("*")
-    .eq("code", planCode)
-    .single<Plan>();
-
+  const plan = await PlanModel.findOne({ code: planCode }).lean<Plan>();
   if (!plan) {
     return { error: "Plan no disponible" };
   }
 
   if (!isPaidPlan(plan.code as PlanCode)) {
-    return { error: "El plan gratuito no requiere pago" };
+    return { error: "El plan gratuito no requiere pago" } as const;
   }
 
   const priceId = getPriceIdForPlan(plan.code as PlanCode);
 
   if (!priceId) {
-    return { error: "Falta configurar el precio en Stripe" };
+    return { error: "Falta configurar el precio en Stripe" } as const;
   }
 
-  const customerId = await ensureStripeCustomer(supabase, subscription, user);
+  const customerId = await ensureStripeCustomer(subscription, userId);
 
   const session = await stripe.checkout.sessions.create({
     mode: "subscription",
@@ -192,15 +156,15 @@ export async function createCheckoutSession(planCode: PlanCode) {
     allow_promotion_codes: true,
     client_reference_id: subscription.id,
     metadata: {
-      supabase_user_id: user.id,
+      clerk_user_id: userId,
       target_plan_code: plan.code,
       current_plan_code: subscription.plan_code,
     },
-    success_url: `${APP_URL}/billing?status=success`,
-    cancel_url: `${APP_URL}/billing`,
+    success_url: `${APP_URL}/app/billing?status=success`,
+    cancel_url: `${APP_URL}/app/billing`,
     subscription_data: {
       metadata: {
-        supabase_user_id: user.id,
+        clerk_user_id: userId,
         plan_code: plan.code,
       },
     },
@@ -212,34 +176,24 @@ export async function createCheckoutSession(planCode: PlanCode) {
     ],
   });
 
-  return { data: { url: session.url } };
+  return { data: { url: session.url } } as const;
 }
 
-export async function createCustomerPortalSession() {
-  const supabase = await createClient();
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
+export async function createCustomerPortalSession(): Promise<
+  | { data: { url: string } }
+  | { error: string }
+> {
+  const userId = await requireAuthUserId();
+  await connectToDatabase();
 
-  if (!user) {
-    return { error: "No autenticado" };
-  }
+  const subscriptionDoc = await getOrCreateSubscription(userId);
+  const subscription = serializeDoc(subscriptionDoc) as unknown as Subscription;
 
-  const { data: subscription } = await supabase
-    .from("subscriptions")
-    .select("*")
-    .eq("user_id", user.id)
-    .single();
-
-  if (!subscription) {
-    return { error: "No se encontró la suscripción" };
-  }
-
-  const customerId = await ensureStripeCustomer(supabase, subscription, user);
+  const customerId = await ensureStripeCustomer(subscription, userId);
 
   const session = await stripe.billingPortal.sessions.create({
     customer: customerId,
-    return_url: `${APP_URL}/billing`,
+    return_url: `${APP_URL}/app/billing`,
   });
 
   return { data: { url: session.url } };

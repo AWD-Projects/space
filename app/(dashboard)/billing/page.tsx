@@ -33,7 +33,7 @@ export default async function BillingPage() {
   ]);
 
   if (!overview || !plans) {
-    redirect("/home");
+    redirect("/app/home");
   }
 
   const currentPlanCode = overview.plan.code as PlanCode;

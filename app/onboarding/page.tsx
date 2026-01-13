@@ -7,14 +7,13 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select } from "@/components/ui/select";
-import { createStore, updateStore, publishStore } from "@/lib/actions/store";
+import { createStore, updateStore, publishStore, getMyStore } from "@/lib/actions/store";
 import { createCatalog } from "@/lib/actions/catalog";
 import { createProduct } from "@/lib/actions/product";
 import { generateSlug } from "@/lib/utils/slug";
 import { formatPhoneNumber, parsePhoneNumber, formatStock, parseStock } from "@/lib/utils/formatters";
 import { Check, Copy, Palette, Sparkles, LayoutDashboard, Loader2 } from "lucide-react";
 import { useToast } from "@/components/ui/toast-provider";
-import { createClient as createSupabaseBrowserClient } from "@/lib/supabase/client";
 
 type Step = 1 | 2 | 3 | 4 | 5;
 
@@ -72,12 +71,9 @@ export default function OnboardingPage() {
   const progress = (currentStep / 5) * 100;
 
   useEffect(() => {
-    const supabase = createSupabaseBrowserClient();
     async function preloadStore() {
-      const { data } = await supabase
-        .from("stores")
-        .select("id, name, slug, description, primary_color, accent_color, default_cta, whatsapp_phone, default_payment_url, contact_email")
-        .maybeSingle<StoreRecord>();
+      const result: any = await getMyStore();
+      const data = result?.data as StoreRecord | null;
 
       if (data) {
         setStoreId(data.id);
@@ -205,7 +201,7 @@ export default function OnboardingPage() {
 
   const handleFinish = () => {
     startFinishing(() => {
-      router.push("/home");
+      router.push("/app/home");
     });
   };
 
@@ -288,7 +284,7 @@ export default function OnboardingPage() {
                       <Label htmlFor="slug">URL (generada automáticamente)</Label>
                       <div className="flex items-center gap-2">
                         <span className="text-sm text-muted-foreground">space.com/</span>
-                        <Input id="slug" value={storeSlug} readOnly className="bg-cloud" />
+                        <Input id="slug" value={storeSlug} readOnly className="bg-cloud text-ink" />
                       </div>
                     </div>
                     <div className="space-y-2">
@@ -432,7 +428,7 @@ export default function OnboardingPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Slug</Label>
-                      <Input value={catalogSlug} readOnly className="bg-cloud" />
+                      <Input value={catalogSlug} readOnly className="bg-cloud text-ink" />
                     </div>
                   </div>
                   <Button onClick={handleStep3} disabled={!catalogName || !catalogSlug || loading} className="w-full">
@@ -470,7 +466,7 @@ export default function OnboardingPage() {
                     </div>
                     <div className="space-y-2">
                       <Label>Slug</Label>
-                      <Input value={productSlug} readOnly className="bg-cloud" />
+                      <Input value={productSlug} readOnly className="bg-cloud text-ink" />
                     </div>
                     <div className="space-y-2">
                       <Label>Descripción</Label>
@@ -538,7 +534,7 @@ export default function OnboardingPage() {
                         </div>
                         <p className="text-sm text-slate">Tu catálogo ya está en línea. Comparte el enlace:</p>
                         <div className="mt-3 flex items-center gap-2">
-                          <Input value={publicUrl} readOnly className="bg-cloud" />
+                          <Input value={publicUrl} readOnly className="bg-cloud text-ink" />
                           <Button variant="outline" size="icon" onClick={copyUrl}>
                             {copied ? <Check className="h-4 w-4" /> : <Copy className="h-4 w-4" />}
                           </Button>
