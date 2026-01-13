@@ -54,10 +54,17 @@ function LoginContent() {
   async function handlePasswordSignIn() {
     if (!isLoaded || !signIn) return;
     try {
-      const result = await signIn.create({
+      let result = await signIn.create({
         identifier: email,
         password,
       });
+
+      if (result.status === "needs_first_factor") {
+        result = await result.attemptFirstFactor({
+          strategy: "password",
+          password,
+        });
+      }
 
       if (result.status === "complete") {
         await setActive({ session: result.createdSessionId });
@@ -169,6 +176,8 @@ function LoginContent() {
                   </button>
                 </div>
               </div>
+
+              <div id="clerk-captcha" />
 
               <Button type="submit" className="w-full" disabled={isPending}>
                 {isPending ? (
